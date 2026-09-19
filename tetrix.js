@@ -1,5 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('tetrisCanvas');
+    if (!canvas) return;
+
     const restartButton = document.getElementById('restartButton');
     const pauseButton = document.getElementById('pauseButton');
     const togglePanelButton = document.getElementById('togglePanelButton');
@@ -15,9 +17,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoPlayBtn = document.getElementById('autoPlayBtn');
     const autoPlayStatus = document.getElementById('autoPlayStatus');
 
-    let lockDelayMs = 500;
-    let isLocked = false;
-    let lastLockTime = 0;
+    const ctx = canvas.getContext('2d');
+    const BLOCK_SIZE = 30;
+    const SIDEBAR_WIDTH = 6;
+
+    let boardWidth = 10;
+    let boardHeight = 23;
+    let previewCount = 5;
+
+    // Web Audio synthesizer engine (fallback & zero-latency audio without DOM crashes)
+    let audioCtx = null;
+    function initAudio() {
+        if (!audioCtx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (AudioContext) audioCtx = new AudioContext();
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    const defaultVolume = 0.4;
+    let audioVolume = Number(localStorage.getItem('hx_tetrix_volume'));
+    audioVolume = Number.isFinite(audioVolume) ? Math.min(1, Math.max(0, audioVolume)) : defaultVolume;
+    let musicEnabled = localStorage.getItem('hx_tetrix_music') === 'on';
 
     const sounds = {
         move: new Audio('sounds/tone1.ogg'),
@@ -38,18 +61,49 @@ document.addEventListener('DOMContentLoaded', () => {
         clear: 0.55,
         gameOver: 0.6
     };
-    const defaultVolume = 0.4;
-    let audioVolume = Number(localStorage.getItem('hx_tetrix_volume'));
-    audioVolume = Number.isFinite(audioVolume) ? Math.min(1, Math.max(0, audioVolume)) : defaultVolume;
-    let musicEnabled = localStorage.getItem('hx_tetrix_music') === 'on';
 
-    Object.values(sounds).forEach(sound => { sound.preload = 'auto'; });
+    function playTone(freq, type = 'sine', duration = 0.1, gainVal = 0.2) {
+        initAudio();
+        if (!audioCtx) return;
+        try {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(gainVal * audioVolume, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        } catch (e) {}
+    }
 
-    function playSound(sound) {
-        if (!sound) return;
-        const playback = sound.cloneNode();
-        playback.volume = sound.volume;
-        playback.play().catch(() => {});
+    function playSound(type) {
+        initAudio();
+        const sound = sounds[type];
+        if (sound) {
+            try {
+                sound.currentTime = 0;
+                sound.volume = Math.min(1, (baseSoundVolumes[type] || 0.4) * (audioVolume / defaultVolume));
+                const promise = sound.play();
+                if (promise) promise.catch(() => playSyntheticSound(type));
+            } catch (e) {
+                playSyntheticSound(type);
+            }
+        } else {
+            playSyntheticSound(type);
+        }
+    }
+
+    function playSyntheticSound(type) {
+        switch (type) {
+            case 'move': playTone(300, 'triangle', 0.05, 0.15); break;
+            case 'rotate': playTone(450, 'sine', 0.08, 0.25); break;
+            case 'drop': playTone(180, 'square', 0.12, 0.2); break;
+            case 'clear': playTone(650, 'sawtooth', 0.25, 0.35); break;
+            case 'gameOver': playTone(120, 'sawtooth', 0.5, 0.4); break;
+        }
     }
 
     const musicToggleBtn = document.getElementById('musicToggleBtn');
@@ -74,6 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (musicToggleBtn) {
         musicToggleBtn.addEventListener('click', () => {
+            initAudio();
             musicEnabled = !musicEnabled;
             if (musicEnabled) {
                 music.play().catch(() => {});
@@ -104,24 +159,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const queuePlusBtn = document.getElementById('queuePlusBtn');
     const queueDisplay = document.getElementById('queueDisplay');
 
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    const BLOCK_SIZE = 30;
-    const SIDEBAR_WIDTH = 6;
-
-    let boardWidth = 10;
-    let boardHeight = 23;
-    let previewCount = 5;
-
     const SHAPES = [
-        [[1, 1, 1, 1]],        // I
-        [[1, 1], [1, 1]],      // O
-        [[0, 1, 0], [1, 1, 1]],// T
-        [[1, 1, 0], [0, 1, 1]],// S
-        [[0, 1, 1], [1, 1, 0]],// Z
-        [[1, 0, 0], [1, 1, 1]],// J
-        [[0, 0, 1], [1, 1, 1]] // L
+        [[1, 1, 1, 1]],        // 0: I
+        [[1, 1], [1, 1]],      // 1: O
+        [[0, 1, 0], [1, 1, 1]],// 2: T
+        [[1, 1, 0], [0, 1, 1]],// 3: S
+        [[0, 1, 1], [1, 1, 0]],// 4: Z
+        [[1, 0, 0], [1, 1, 1]],// 5: J
+        [[0, 0, 1], [1, 1, 1]] // 6: L
     ];
 
     const SHAPE_NAMES = ['I-Piece', 'O-Piece', 'T-Piece', 'S-Piece', 'Z-Piece', 'J-Piece', 'L-Piece'];
@@ -159,46 +204,57 @@ document.addEventListener('DOMContentLoaded', () => {
     let totalLinesCleared = 0;
     let gameLevel = 1;
     let lastMultiplier = 1;
-    let gameInterval = null;
     let bestProposal = null;
 
-    // Shake and effects state
+    // Shake, Line-clearing delay & Flash FX state
     let shakeDurationRemaining = 0;
-    const SHAKE_TOTAL_DURATION = 120;
+    const SHAKE_TOTAL_DURATION = 140;
     const SHAKE_INTENSITY = 4;
     let flashDurationRemaining = 0;
     const FLASH_DURATION = 100;
-    let lastFrameTime = performance.now();
+    let clearingLines = [];
+    let clearAnimationTimer = 0;
+    const CLEAR_ANIMATION_MS = 140;
 
     let autoPlay = true;
     let lastInputTime = Date.now();
+    let lockDelayMs = 500;
+    let isLocked = false;
+    let lastLockTime = 0;
+    let dropAccumulator = 0;
+    let lastTimestamp = performance.now();
 
+    // Square Particles System
     class Particle {
         constructor(x, y, color) {
             this.x = x;
             this.y = y;
             this.color = color;
-            this.vx = (Math.random() - 0.5) * 10;
-            this.vy = (Math.random() - 0.5) * 10;
+            this.vx = (Math.random() - 0.5) * 8;
+            this.vy = (Math.random() - 0.8) * 8;
             this.life = 1.0;
-            this.decay = 0.02 + Math.random() * 0.03;
-            this.size = 2 + Math.random() * 4;
+            this.decay = 0.02 + Math.random() * 0.025;
+            this.size = 2.5 + Math.random() * 4.5;
+            this.angle = Math.random() * Math.PI * 2;
+            this.vRot = (Math.random() - 0.5) * 0.25;
         }
 
         update() {
             this.x += this.vx;
             this.y += this.vy;
-            this.vy += 0.2; // Gravity
-            this.life -= this.decay;
+            this.vy += 0.25; // Gravity
+            this.angle += this.vRot;
+            this.life = Math.max(0, this.life - this.decay);
         }
 
-        draw(ctx) {
-            ctx.globalAlpha = this.life;
-            ctx.fillStyle = this.color;
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.globalAlpha = 1.0;
+        draw(targetCtx) {
+            targetCtx.save();
+            targetCtx.globalAlpha = Math.max(0, this.life);
+            targetCtx.fillStyle = this.color;
+            targetCtx.translate(this.x, this.y);
+            targetCtx.rotate(this.angle);
+            targetCtx.fillRect(-this.size, -this.size, this.size * 2, this.size * 2);
+            targetCtx.restore();
         }
     }
 
@@ -207,7 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.particles = [];
         }
 
-        emit(x, y, color, count = 15) {
+        emit(x, y, color, count = 10) {
             for (let i = 0; i < count; i++) {
                 this.particles.push(new Particle(x, y, color));
             }
@@ -222,14 +278,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        draw(ctx) {
-            this.particles.forEach(p => p.draw(ctx));
+        draw(targetCtx) {
+            this.particles.forEach(p => p.draw(targetCtx));
         }
     }
 
     const particleSystem = new ParticleSystem();
 
     function updateLastInput() {
+        initAudio();
         lastInputTime = Date.now();
     }
 
@@ -276,7 +333,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function changeQueueSize(delta) {
         previewCount = Math.min(10, Math.max(1, previewCount + delta));
         updateQueueUI();
-        draw();
     }
 
     if (queueMinusBtn) queueMinusBtn.addEventListener('click', () => { changeQueueSize(-1); queueMinusBtn.blur(); updateLastInput(); });
@@ -332,7 +388,6 @@ document.addEventListener('DOMContentLoaded', () => {
         resizeCanvas();
         updateDimensionUI();
         bestProposal = computeBestPlacement(currentShape);
-        draw();
     }
 
     function changeHeight(delta) {
@@ -351,7 +406,6 @@ document.addEventListener('DOMContentLoaded', () => {
         resizeCanvas();
         updateDimensionUI();
         bestProposal = computeBestPlacement(currentShape);
-        draw();
     }
 
     if (widthMinusBtn) widthMinusBtn.addEventListener('click', () => { changeWidth(-1); widthMinusBtn.blur(); updateLastInput(); });
@@ -364,7 +418,6 @@ document.addEventListener('DOMContentLoaded', () => {
             showShadow = !showShadow;
             toggleShadowBtn.classList.toggle('active', showShadow);
             toggleShadowBtn.textContent = showShadow ? 'Shadow ON' : 'Shadow OFF';
-            draw();
             toggleShadowBtn.blur();
             updateLastInput();
         });
@@ -375,7 +428,6 @@ document.addEventListener('DOMContentLoaded', () => {
             showBestMatch = !showBestMatch;
             toggleProposalBtn.classList.toggle('active', showBestMatch);
             toggleProposalBtn.textContent = showBestMatch ? 'Best Match ON' : 'Best Match OFF';
-            draw();
             toggleProposalBtn.blur();
             updateLastInput();
         });
@@ -502,10 +554,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function setDropSpeed(newSpeed) {
         dropIntervalMs = Math.min(1000, Math.max(100, newSpeed));
         if (speedDisplay) speedDisplay.textContent = `${dropIntervalMs} ms`;
-        if (!isPaused && !isGameOver && gameInterval) {
-            clearInterval(gameInterval);
-            gameInterval = setInterval(update, dropIntervalMs);
-        }
     }
 
     if (speedDownBtn) {
@@ -528,25 +576,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isGameOver) return;
         isPaused = !isPaused;
         if (pauseButton) pauseButton.textContent = isPaused ? 'Resume (P)' : 'Pause (P)';
-
-        if (isPaused) {
-            clearInterval(gameInterval);
-            gameInterval = null;
-            draw();
-        } else {
-            gameInterval = setInterval(update, dropIntervalMs);
-        }
         if (pauseButton) pauseButton.blur();
     }
 
     function triggerGameOver() {
         isGameOver = true;
         checkAndUpdateHighScore();
-        playSound(sounds.gameOver);
-        if (gameInterval) clearInterval(gameInterval);
-        gameInterval = null;
+        playSound('gameOver');
         shakeDurationRemaining = 0;
-        draw();
     }
 
     function resetGame() {
@@ -557,13 +594,15 @@ document.addEventListener('DOMContentLoaded', () => {
         heldShapeIndex = -1;
         hasSwapped = false;
         shakeDurationRemaining = 0;
+        flashDurationRemaining = 0;
+        clearingLines = [];
+        clearAnimationTimer = 0;
+        dropAccumulator = 0;
 
         nextShapesQueue = [];
         fillQueue();
         spawnShape();
 
-        if (gameInterval) clearInterval(gameInterval);
-        gameInterval = setInterval(update, dropIntervalMs);
         updateDimensionUI();
         updateQueueUI();
     }
@@ -586,7 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (newX < 0 || newX >= boardWidth) return true;
                     // Floor boundary
                     if (newY >= boardHeight) return true;
-                    // Placed piece collision (ignore off-screen negative Y values during spawn)
+                    // Placed piece collision
                     if (newY >= 0 && board[newY] && board[newY][newX] !== 0) {
                         return true;
                     }
@@ -707,8 +746,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             bestProposal = null;
         }
-
-        draw();
     }
 
     function getShadowY() {
@@ -734,62 +771,70 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        let clearedLines = 0;
-        for (let y = boardHeight - 1; y >= 0; y--) {
+        currentShape = null;
+
+        // Detect full lines for flash and destruction animation
+        clearingLines = [];
+        for (let y = 0; y < boardHeight; y++) {
             if (!board[y].includes(0)) {
-                board.splice(y, 1);
-                board.unshift(Array(boardWidth).fill(0));
-                clearedLines++;
-                y++;
+                clearingLines.push(y);
             }
         }
 
-        if (clearedLines > 0) {
-            const points = [100, 300, 500, 800];
-            const scoreGain = points[Math.min(clearedLines, 4) - 1] || 800;
-            score += scoreGain;
-            checkAndUpdateHighScore();
-
-            totalLinesCleared += clearedLines;
-            gameLevel = Math.floor(totalLinesCleared / 10) + 1;
-            dropIntervalMs = Math.max(100, 500 - (gameLevel - 1) * 50);
-            lastMultiplier = clearedLines > 1 ? clearedLines : 1;
-            
-            playSound(sounds.clear);
-            // Cap shake duration cleanly to avoid infinite accumulation
+        if (clearingLines.length > 0) {
+            clearAnimationTimer = CLEAR_ANIMATION_MS;
+            playSound('clear');
             shakeDurationRemaining = SHAKE_TOTAL_DURATION;
             flashDurationRemaining = FLASH_DURATION;
 
-            // Emit particles for each cleared line
-            for (let y = 0; y < boardHeight; y++) {
-                if (!board[y].includes(0)) {
-                    // This is slightly off because we spliced, but good enough for visual polish
-                    // Let's try to emit particles from where the line was
-                    for (let x = 0; x < boardWidth; x++) {
-                        const color = COLORS[1 + Math.floor(Math.random() * 7)];
-                        particleSystem.emit(x * BLOCK_SIZE, y * BLOCK_SIZE, color, 2);
-                    }
+            // Emit particles immediately from clearing lines
+            clearingLines.forEach(lineY => {
+                for (let x = 0; x < boardWidth; x++) {
+                    const color = COLORS[board[lineY][x]] || '#ffffff';
+                    particleSystem.emit(x * BLOCK_SIZE + BLOCK_SIZE / 2, lineY * BLOCK_SIZE + BLOCK_SIZE / 2, color, 8);
                 }
-            }
+            });
+        } else {
+            spawnShape();
         }
-        currentShape = null;
+    }
+
+    function finalizeLineClears() {
+        if (clearingLines.length === 0) return;
+
+        const count = clearingLines.length;
+        clearingLines.sort((a, b) => a - b).forEach(lineY => {
+            board.splice(lineY, 1);
+            board.unshift(Array(boardWidth).fill(0));
+        });
+
+        const points = [100, 300, 500, 800];
+        const scoreGain = points[Math.min(count, 4) - 1] || 800;
+        score += scoreGain;
+        checkAndUpdateHighScore();
+
+        totalLinesCleared += count;
+        gameLevel = Math.floor(totalLinesCleared / 10) + 1;
+        dropIntervalMs = Math.max(100, 500 - (gameLevel - 1) * 50);
+        lastMultiplier = count > 1 ? count : 1;
+
+        clearingLines = [];
+        spawnShape();
     }
 
     function dropShape() {
-        if (!currentShape || isPaused || isGameOver) return;
+        if (!currentShape || isPaused || isGameOver || clearingLines.length > 0) return;
         currentY = getShadowY();
-        playSound(sounds.drop);
+        playSound('drop');
         mergeShape();
-        spawnShape();
         hasSwapped = false;
         isLocked = false;
         lastLockTime = 0;
     }
 
     function applyBestMatch() {
-        if (!currentShape || isPaused || isGameOver || !bestProposal) return;
+        if (!currentShape || isPaused || isGameOver || !bestProposal || clearingLines.length > 0) return;
 
-        // Verify that target coordinates and matrix do not collide
         if (checkCollision(bestProposal.shape, bestProposal.x, bestProposal.y)) {
             dropShape();
             return;
@@ -798,34 +843,59 @@ document.addEventListener('DOMContentLoaded', () => {
         currentShape = bestProposal.shape;
         currentX = bestProposal.x;
         currentY = bestProposal.y;
-        playSound(sounds.drop);
+        playSound('drop');
         mergeShape();
-        spawnShape();
         hasSwapped = false;
         isLocked = false;
         lastLockTime = 0;
     }
 
+    // Standard Super Rotation System (SRS) Wall Kicks
+    const KICKS_NORMAL = {
+        '0->1': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
+        '1->0': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
+        '1->2': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
+        '2->1': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
+        '2->3': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
+        '3->2': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
+        '3->0': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
+        '0->3': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]]
+    };
+
+    const KICKS_I = {
+        '0->1': [[0, 0], [-2, 0], [1, 0], [-2, -1], [1, 2]],
+        '1->0': [[0, 0], [2, 0], [-1, 0], [2, 1], [-1, -2]],
+        '1->2': [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]],
+        '2->1': [[0, 0], [1, 0], [-2, 0], [1, -2], [-2, 1]],
+        '2->3': [[0, 0], [2, 0], [-1, 0], [2, 1], [-1, -2]],
+        '3->2': [[0, 0], [-2, 0], [1, 0], [-2, -1], [1, 2]],
+        '3->0': [[0, 0], [1, 0], [-2, 0], [1, -2], [-2, 1]],
+        '0->3': [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]]
+    };
+
+    let currentRotationState = 0;
+
     function rotateShape() {
-        if (!currentShape || isPaused || isGameOver) return;
+        if (!currentShape || isPaused || isGameOver || clearingLines.length > 0) return;
+        if (currentShapeIndex === 1) return; // O-piece does not need rotation
+
         const rotated = rotateMatrix(currentShape);
-        
-        const kicks = [
-            [0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], 
-            [1, 1], [-1, 1], [1, -1], [-1, -1]
-        ];
+        const nextRotationState = (currentRotationState + 1) % 4;
+        const transitionKey = `${currentRotationState}->${nextRotationState}`;
+        const kickTable = currentShapeIndex === 0 ? KICKS_I : KICKS_NORMAL;
+        const kicks = kickTable[transitionKey] || [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]];
 
         for (const [offsetX, offsetY] of kicks) {
-            if (!checkCollision(rotated, currentX + offsetX, currentY + offsetY)) {
+            if (!checkCollision(rotated, currentX + offsetX, currentY - offsetY)) {
                 currentX += offsetX;
-                currentY += offsetY;
+                currentY -= offsetY;
                 currentShape = rotated;
+                currentRotationState = nextRotationState;
                 bestProposal = computeBestPlacement(currentShape);
-                playSound(sounds.rotate);
+                playSound('rotate');
                 hasSwapped = false;
                 isLocked = false;
                 lastLockTime = 0;
-                draw();
                 return;
             }
         }
@@ -847,20 +917,71 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.restore();
     }
 
-    function draw() {
-        const now = performance.now();
-        const delta = Math.min(now - lastFrameTime, 100);
-        lastFrameTime = now;
+    function updateLogic(deltaMs) {
+        if (isPaused || isGameOver) return;
+
+        const currentTime = Date.now();
+
+        // Line clear completion check
+        if (clearingLines.length > 0) {
+            clearAnimationTimer -= deltaMs;
+            if (clearAnimationTimer <= 0) {
+                finalizeLineClears();
+            }
+            return;
+        }
+
+        // Idle Auto-Play Check (30 seconds)
+        if (!autoPlay && (currentTime - lastInputTime > 30000)) {
+            autoPlay = true;
+            if (autoPlayBtn) {
+                autoPlayBtn.classList.add('active');
+                autoPlayBtn.textContent = 'Auto-Play ON';
+                if (autoPlayStatus) autoPlayStatus.textContent = 'ON';
+            }
+        }
+
+        dropAccumulator += deltaMs;
+        if (dropAccumulator >= dropIntervalMs) {
+            dropAccumulator %= dropIntervalMs;
+
+            if (autoPlay) {
+                if (bestProposal) {
+                    applyBestMatch();
+                } else {
+                    dropShape();
+                }
+            } else if (currentShape) {
+                if (!checkCollision(currentShape, currentX, currentY + 1)) {
+                    currentY++;
+                    hasSwapped = false;
+                    isLocked = false;
+                    lastLockTime = 0;
+                } else {
+                    if (!isLocked) {
+                        isLocked = true;
+                        lastLockTime = currentTime;
+                    } else if (currentTime - lastLockTime >= lockDelayMs) {
+                        mergeShape();
+                        isLocked = false;
+                    }
+                }
+            }
+        }
+    }
+
+    function draw(deltaMs) {
+        particleSystem.update();
 
         ctx.save();
 
-        // Screen Shake calculation using real elapsed time
+        // Screen Shake calculation
         if (shakeDurationRemaining > 0) {
             const shakeFactor = shakeDurationRemaining / SHAKE_TOTAL_DURATION;
             const offsetX = (Math.random() - 0.5) * SHAKE_INTENSITY * shakeFactor * 2;
             const offsetY = (Math.random() - 0.5) * SHAKE_INTENSITY * shakeFactor * 2;
             ctx.translate(offsetX, offsetY);
-            shakeDurationRemaining = Math.max(0, shakeDurationRemaining - delta);
+            shakeDurationRemaining = Math.max(0, shakeDurationRemaining - deltaMs);
         }
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -890,17 +1011,23 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillText('HX.MX.TETRIX', playfieldPixelWidth / 2, 40);
         ctx.restore();
 
-        // 2. Placed Blocks
+        // 2. Placed Blocks & Clearing Flash Highlights
         for (let y = 0; y < boardHeight; y++) {
+            const isClearing = clearingLines.includes(y);
             for (let x = 0; x < boardWidth; x++) {
                 if (board[y][x] !== 0) {
-                    drawBlock(x * BLOCK_SIZE, y * BLOCK_SIZE, COLORS[board[y][x]]);
+                    if (isClearing) {
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(x * BLOCK_SIZE + 1, y * BLOCK_SIZE + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+                    } else {
+                        drawBlock(x * BLOCK_SIZE, y * BLOCK_SIZE, COLORS[board[y][x]]);
+                    }
                 }
             }
         }
 
         // 3. Best Match Outline
-        if (showBestMatch && bestProposal && bestProposal.shape && !isGameOver) {
+        if (showBestMatch && bestProposal && bestProposal.shape && !isGameOver && clearingLines.length === 0) {
             ctx.save();
             ctx.strokeStyle = '#58a6ff';
             ctx.fillStyle = 'rgba(88, 166, 255, 0.08)';
@@ -921,7 +1048,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // 4. Ghost Shadow & Active Shape
-        if (currentShape && !isGameOver) {
+        if (currentShape && !isGameOver && clearingLines.length === 0) {
             if (showShadow) {
                 const shadowY = getShadowY();
                 for (let y = 0; y < currentShape.length; y++) {
@@ -1017,7 +1144,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         hudY += holdBoxHeight + 16;
 
-        // Lookahead Queue (1 to 10)
+        // Lookahead Queue
         ctx.fillStyle = '#8b949e';
         ctx.font = '600 11px -apple-system, sans-serif';
         ctx.fillText(`NEXT (${previewCount})`, hudX, hudY);
@@ -1063,7 +1190,7 @@ document.addEventListener('DOMContentLoaded', () => {
             hudY += nextItemHeight + boxGap;
         }
 
-        // Keyboard reference sits directly above the bottom metrics.
+        // Keys Card
         const statsBottom = boardHeight * BLOCK_SIZE - 18;
         const keysY = statsBottom - 220;
         ctx.fillStyle = '#161b22';
@@ -1088,7 +1215,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.lineTo(hudX + 148, statsBottom - 148);
         ctx.stroke();
 
-        // Stats & Indicators stay anchored to the bottom of the sidebar.
+        // Metrics
         hudY = statsBottom - 132;
         ctx.fillStyle = '#8b949e';
         ctx.font = '600 11px -apple-system, sans-serif';
@@ -1103,7 +1230,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.font = '600 11px ui-monospace, monospace';
         ctx.fillText(`x${lastMultiplier}`, hudX + 90, hudY);
 
-        // High Score Metric
         hudY = statsBottom - 84;
         ctx.fillStyle = '#8b949e';
         ctx.font = '600 11px -apple-system, sans-serif';
@@ -1124,7 +1250,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.font = '600 14px ui-monospace, monospace';
         ctx.fillText(`${String(dropIntervalMs).padStart(4, '0')} ms`, hudX, hudY);
 
-        // Overlays
+        // Game Over & Paused Overlays
         if (isGameOver) {
             ctx.fillStyle = 'rgba(9, 13, 18, 0.85)';
             ctx.fillRect(0, 0, playfieldPixelWidth, boardHeight * BLOCK_SIZE);
@@ -1171,7 +1297,28 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.fillText('PAUSED', playfieldPixelWidth / 2, (boardHeight * BLOCK_SIZE) / 2);
             ctx.textAlign = 'left';
         }
+
+        // Screen Flash Render
+        if (flashDurationRemaining > 0) {
+            const flashAlpha = Math.min(1.0, flashDurationRemaining / (FLASH_DURATION * 0.5));
+            ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha * 0.75})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            flashDurationRemaining = Math.max(0, flashDurationRemaining - deltaMs);
+        }
+
+        particleSystem.draw(ctx);
         ctx.restore();
+    }
+
+    // Continuous 60/120Hz Animation & Game Loop
+    function mainGameLoop(timestamp) {
+        const deltaMs = Math.min(timestamp - lastTimestamp, 50);
+        lastTimestamp = timestamp;
+
+        updateLogic(deltaMs);
+        draw(deltaMs);
+
+        requestAnimationFrame(mainGameLoop);
     }
 
     document.addEventListener('keydown', (e) => {
@@ -1180,34 +1327,31 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (isPaused || isGameOver || !currentShape) return;
+        if (isPaused || isGameOver || !currentShape || clearingLines.length > 0) return;
         updateLastInput();
 
         switch (e.key) {
             case 'ArrowLeft':
                 if (!checkCollision(currentShape, currentX - 1, currentY)) {
                     currentX--;
-                    playSound(sounds.move);
+                    playSound('move');
                     hasSwapped = false;
                     isLocked = false;
                     lastLockTime = 0;
-                    draw();
                 }
                 break;
             case 'ArrowRight':
                 if (!checkCollision(currentShape, currentX + 1, currentY)) {
                     currentX++;
-                    playSound(sounds.move);
+                    playSound('move');
                     hasSwapped = false;
                     isLocked = false;
                     lastLockTime = 0;
-                    draw();
                 }
                 break;
             case 'ArrowDown':
                 if (!checkCollision(currentShape, currentX, currentY + 1)) {
                     currentY++;
-                    draw();
                 }
                 break;
             case 'ArrowUp':
@@ -1224,7 +1368,7 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'c':
             case 'C':
                 if (!hasSwapped) {
-                    playSound(sounds.rotate);
+                    playSound('rotate');
                     if (heldShapeIndex === -1) {
                         heldShapeIndex = currentShapeIndex;
                         spawnShape();
@@ -1237,7 +1381,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         currentX = Math.floor(boardWidth / 2) - Math.floor(currentShape[0].length / 2);
                         currentY = 0;
                         bestProposal = computeBestPlacement(currentShape);
-                        draw();
                     }
                     hasSwapped = true;
                 }
@@ -1249,6 +1392,7 @@ document.addEventListener('DOMContentLoaded', () => {
         togglePause();
         updateLastInput();
     });
+
     if (togglePanelButton && controlsPanel) {
         togglePanelButton.addEventListener('click', () => {
             const panelVisible = !controlsPanel.hidden;
@@ -1259,6 +1403,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateLastInput();
         });
     }
+
     if (restartButton) {
         restartButton.addEventListener('click', () => {
             resetGame();
@@ -1267,50 +1412,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function update() {
-        if (isPaused || isGameOver || !currentShape) return;
-
-        const currentTime = Date.now();
-
-        // Handle Idle Auto-Play (30s)
-        if (!autoPlay && (currentTime - lastInputTime > 30000)) {
-            autoPlay = true;
-            if (autoPlayBtn) {
-                autoPlayBtn.classList.add('active');
-                autoPlayBtn.textContent = 'Auto-Play ON';
-                if (autoPlayStatus) autoPlayStatus.textContent = 'ON';
-            }
-        }
-
-        // Handle Auto-Play behavior
-        if (autoPlay) {
-            if (bestProposal && !isGameOver && !isPaused) {
-                applyBestMatch();
-            } else if (!bestProposal && !isGameOver && !isPaused) {
-                dropShape();
-            }
-        } else {
-            if (!checkCollision(currentShape, currentX, currentY + 1)) {
-                currentY++;
-                hasSwapped = false;
-                isLocked = false;
-                lastLockTime = 0;
-            } else {
-                if (!isLocked) {
-                    isLocked = true;
-                    lastLockTime = currentTime;
-                } else {
-                    if (currentTime - lastLockTime >= lockDelayMs) {
-                        mergeShape();
-                        spawnShape();
-                        isLocked = false;
-                    }
-                }
-            }
-        }
-        draw();
-    }
-
     renderProbabilityControls();
     resetGame();
+    requestAnimationFrame(mainGameLoop);
 });
