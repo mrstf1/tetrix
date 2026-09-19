@@ -27,11 +27,21 @@ document.addEventListener('DOMContentLoaded', () => {
         gameOver: new Audio('sounds/twoTone2.ogg')
     };
 
-    sounds.move.volume = 0.25;
-    sounds.rotate.volume = 0.35;
-    sounds.drop.volume = 0.45;
-    sounds.clear.volume = 0.55;
-    sounds.gameOver.volume = 0.6;
+    const music = new Audio('sounds/powerUp7.ogg');
+    music.loop = true;
+    music.preload = 'auto';
+
+    const baseSoundVolumes = {
+        move: 0.25,
+        rotate: 0.35,
+        drop: 0.45,
+        clear: 0.55,
+        gameOver: 0.6
+    };
+    const defaultVolume = 0.4;
+    let audioVolume = Number(localStorage.getItem('hx_tetrix_volume'));
+    audioVolume = Number.isFinite(audioVolume) ? Math.min(1, Math.max(0, audioVolume)) : defaultVolume;
+    let musicEnabled = localStorage.getItem('hx_tetrix_music') === 'on';
 
     Object.values(sounds).forEach(sound => { sound.preload = 'auto'; });
 
@@ -40,6 +50,47 @@ document.addEventListener('DOMContentLoaded', () => {
         const playback = sound.cloneNode();
         playback.volume = sound.volume;
         playback.play().catch(() => {});
+    }
+
+    const musicToggleBtn = document.getElementById('musicToggleBtn');
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volumeValue = document.getElementById('volumeValue');
+
+    function applyAudioSettings() {
+        music.volume = audioVolume;
+        Object.entries(sounds).forEach(([name, sound]) => {
+            sound.volume = Math.min(1, baseSoundVolumes[name] * (audioVolume / defaultVolume));
+        });
+        if (volumeSlider) volumeSlider.value = String(audioVolume);
+        if (volumeValue) volumeValue.textContent = `${Math.round(audioVolume * 100)}%`;
+        if (musicToggleBtn) {
+            musicToggleBtn.textContent = musicEnabled ? 'ON' : 'OFF';
+            musicToggleBtn.classList.toggle('active', musicEnabled);
+            musicToggleBtn.setAttribute('aria-pressed', String(musicEnabled));
+        }
+    }
+
+    applyAudioSettings();
+
+    if (musicToggleBtn) {
+        musicToggleBtn.addEventListener('click', () => {
+            musicEnabled = !musicEnabled;
+            if (musicEnabled) {
+                music.play().catch(() => {});
+            } else {
+                music.pause();
+            }
+            localStorage.setItem('hx_tetrix_music', musicEnabled ? 'on' : 'off');
+            applyAudioSettings();
+        });
+    }
+
+    if (volumeSlider) {
+        volumeSlider.addEventListener('input', (e) => {
+            audioVolume = parseFloat(e.target.value);
+            localStorage.setItem('hx_tetrix_volume', String(audioVolume));
+            applyAudioSettings();
+        });
     }
 
     const widthMinusBtn = document.getElementById('widthMinusBtn');
@@ -115,10 +166,68 @@ document.addEventListener('DOMContentLoaded', () => {
     let shakeDurationRemaining = 0;
     const SHAKE_TOTAL_DURATION = 120;
     const SHAKE_INTENSITY = 4;
+    let flashDurationRemaining = 0;
+    const FLASH_DURATION = 100;
     let lastFrameTime = performance.now();
 
     let autoPlay = true;
     let lastInputTime = Date.now();
+
+    class Particle {
+        constructor(x, y, color) {
+            this.x = x;
+            this.y = y;
+            this.color = color;
+            this.vx = (Math.random() - 0.5) * 10;
+            this.vy = (Math.random() - 0.5) * 10;
+            this.life = 1.0;
+            this.decay = 0.02 + Math.random() * 0.03;
+            this.size = 2 + Math.random() * 4;
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vy += 0.2; // Gravity
+            this.life -= this.decay;
+        }
+
+        draw(ctx) {
+            ctx.globalAlpha = this.life;
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+    }
+
+    class ParticleSystem {
+        constructor() {
+            this.particles = [];
+        }
+
+        emit(x, y, color, count = 15) {
+            for (let i = 0; i < count; i++) {
+                this.particles.push(new Particle(x, y, color));
+            }
+        }
+
+        update() {
+            for (let i = this.particles.length - 1; i >= 0; i--) {
+                this.particles[i].update();
+                if (this.particles[i].life <= 0) {
+                    this.particles.splice(i, 1);
+                }
+            }
+        }
+
+        draw(ctx) {
+            this.particles.forEach(p => p.draw(ctx));
+        }
+    }
+
+    const particleSystem = new ParticleSystem();
 
     function updateLastInput() {
         lastInputTime = Date.now();
@@ -649,6 +758,19 @@ document.addEventListener('DOMContentLoaded', () => {
             playSound(sounds.clear);
             // Cap shake duration cleanly to avoid infinite accumulation
             shakeDurationRemaining = SHAKE_TOTAL_DURATION;
+            flashDurationRemaining = FLASH_DURATION;
+
+            // Emit particles for each cleared line
+            for (let y = 0; y < boardHeight; y++) {
+                if (!board[y].includes(0)) {
+                    // This is slightly off because we spliced, but good enough for visual polish
+                    // Let's try to emit particles from where the line was
+                    for (let x = 0; x < boardWidth; x++) {
+                        const color = COLORS[1 + Math.floor(Math.random() * 7)];
+                        particleSystem.emit(x * BLOCK_SIZE, y * BLOCK_SIZE, color, 2);
+                    }
+                }
+            }
         }
         currentShape = null;
     }
