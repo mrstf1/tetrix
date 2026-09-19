@@ -862,7 +862,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        hudY += currentBoxHeight + 10;
+        hudY += currentBoxHeight + 16;
 
         // HOLD BLOCK
         ctx.fillStyle = '#8b949e';
@@ -893,7 +893,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        hudY += holdBoxHeight + 10;
+        hudY += holdBoxHeight + 16;
 
         // Lookahead Queue (1 to 10)
         ctx.fillStyle = '#8b949e';
@@ -906,15 +906,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (previewCount <= 2) {
             nextItemHeight = 36;
             nextBlockSize = 11;
-            boxGap = 4;
+            boxGap = 8;
         } else if (previewCount <= 4) {
             nextItemHeight = 28;
             nextBlockSize = 9;
-            boxGap = 3;
+            boxGap = 6;
         } else {
             nextItemHeight = 22;
             nextBlockSize = 7;
-            boxGap = 2;
+            boxGap = 4;
         }
 
         for (let i = 0; i < previewCount; i++) {
@@ -941,15 +941,40 @@ document.addEventListener('DOMContentLoaded', () => {
             hudY += nextItemHeight + boxGap;
         }
 
-        // Stats & Indicators
-        hudY += 10;
+        // Keyboard reference sits directly above the bottom metrics.
+        const statsBottom = boardHeight * BLOCK_SIZE - 18;
+        const keysY = statsBottom - 220;
+        ctx.fillStyle = '#161b22';
+        ctx.fillRect(hudX - 6, keysY - 14, 160, 78);
+        ctx.strokeStyle = '#30363d';
+        ctx.strokeRect(hudX - 6, keysY - 14, 160, 78);
+
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '600 12px -apple-system, sans-serif';
+        ctx.fillText('KEYS', hudX, keysY);
+
+        ctx.fillStyle = '#c9d1d9';
+        ctx.font = '600 11px ui-monospace, monospace';
+        ctx.fillText('← → MOVE ↑ ROTATE', hudX, keysY + 15);
+        ctx.fillText('↓ SOFT DROP SPACE DROP', hudX, keysY + 30);
+        ctx.fillText('C HOLD P PAUSE', hudX, keysY + 45);
+        ctx.fillText('ENTER BEST MATCH', hudX, keysY + 56);
+
+        ctx.strokeStyle = '#30363d';
+        ctx.beginPath();
+        ctx.moveTo(hudX, statsBottom - 148);
+        ctx.lineTo(hudX + 148, statsBottom - 148);
+        ctx.stroke();
+
+        // Stats & Indicators stay anchored to the bottom of the sidebar.
+        hudY = statsBottom - 132;
         ctx.fillStyle = '#8b949e';
         ctx.font = '600 11px -apple-system, sans-serif';
         ctx.fillText('SCORE', hudX, hudY);
 
         hudY += 16;
         ctx.fillStyle = '#f0f6fc';
-        ctx.font = '600 16px ui-monospace, monospace';
+        ctx.font = '600 14px ui-monospace, monospace';
         ctx.fillText(String(score).padStart(6, '0'), hudX, hudY);
         
         ctx.fillStyle = '#f85149';
@@ -957,22 +982,22 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillText(`x${lastMultiplier}`, hudX + 90, hudY);
 
         // High Score Metric
-        hudY += 16;
-        ctx.fillStyle = '#e3b341';
-        ctx.font = '600 10px -apple-system, sans-serif';
+        hudY = statsBottom - 84;
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '600 11px -apple-system, sans-serif';
         ctx.fillText('★ BEST', hudX, hudY);
 
-        hudY += 14;
-        ctx.fillStyle = '#e3b341';
-        ctx.font = '600 13px ui-monospace, monospace';
+        hudY = statsBottom - 66;
+        ctx.fillStyle = '#f0f6fc';
+        ctx.font = '600 14px ui-monospace, monospace';
         ctx.fillText(String(highScore).padStart(6, '0'), hudX, hudY);
 
-        hudY += 16;
+        hudY = statsBottom - 30;
         ctx.fillStyle = '#8b949e';
         ctx.font = '600 11px -apple-system, sans-serif';
         ctx.fillText('SPEED', hudX, hudY);
 
-        hudY += 16;
+        hudY = statsBottom;
         ctx.fillStyle = '#f0f6fc';
         ctx.font = '600 14px ui-monospace, monospace';
         ctx.fillText(`${String(dropIntervalMs).padStart(4, '0')} ms`, hudX, hudY);
