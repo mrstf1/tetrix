@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HX.MX.TETRIX</title>
+    <link rel="icon" href="data:,">
+    <style>
+        :root {
+            --bg-body: #0d1117;
+            --bg-panel: #161b22;
+            --bg-subtle: #21262d;
+            --border-color: #30363d;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-amber: #d29922;
+            --accent-red: #f85149;
+            --gold: #e3b341;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", Helvetica, sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        #appShell {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        #frames {
+            display: flex;
+            align-items: stretch;
+            gap: 28px;
+        }
+
+        #gameTitle {
+            margin: 0;
+            text-align: center;
+            font-size: 64px;
+            font-weight: 900;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            font-family: ui-monospace, SFMono-Regular, "SF Pro Display", sans-serif;
+            text-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        #gameTitle span {
+            display: inline-block;
+        }
+
+        #tetrisCanvas {
+            border: 1px solid var(--border-color);
+            background: #090d12;
+            border-radius: 8px;
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+            display: block;
+        }
+
+        .actions-bar {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-action {
+            flex: 1;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        #pauseButton {
+            background: var(--bg-subtle);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        #pauseButton:hover {
+            background: #2a313c;
+        }
+
+        #restartButton {
+            background: #238636;
+            color: #ffffff;
+        }
+
+        #restartButton:hover {
+            background: #2ea043;
+        }
+
+        #controlsPanel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            width: 260px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        #controlsPanel[hidden] {
+            display: none;
+        }
+
+        #togglePanelButton {
+            background: var(--bg-subtle);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        #togglePanelButton:hover {
+            background: #2a313c;
+        }
+
+        @media (max-width: 900px) {
+            body {
+                align-items: flex-start;
+            }
+
+            #frames {
+                flex-direction: column;
+            }
+        }
+
+        .panel-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        h3 {
+            margin: 0;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        .toggle-group {
+            display: flex;
+            gap: 6px;
+        }
+
+        .toggle-btn {
+            flex: 1;
+            padding: 6px 8px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-align: center;
+        }
+
+        .toggle-btn.active {
+            background: rgba(88, 166, 255, 0.15);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .stepper-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 8px;
+            background: var(--bg-subtle);
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 4px;
+        }
+
+        .stepper-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            width: 100px;
+        }
+
+        .stepper-val {
+            font-family: ui-monospace, SFMono-Regular, monospace;
+            font-size: 13px;
+            color: var(--accent);
+            font-weight: 600;
+            width: 65px;
+            text-align: center;
+        }
+
+        .step-btn {
+            background: #30363d;
+            border: 1px solid #484f58;
+            color: var(--text-primary);
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s;
+        }
+
+        .step-btn:hover {
+            background: #484f58;
+        }
+
+        .step-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .weight-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 8px;
+            background: var(--bg-subtle);
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 4px;
+        }
+
+        .piece-label {
+            font-weight: 600;
+            width: 70px;
+            font-size: 12px;
+        }
+
+        .weight-input {
+            width: 42px;
+            text-align: center;
+            background: #0d1117;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 4px;
+            border-radius: 4px;
+            font-family: ui-monospace, SFMono-Regular, monospace;
+            font-size: 12px;
+            margin: 0 4px;
+        }
+
+        .weight-input::-webkit-outer-spin-button,
+        .weight-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .percentage-display {
+            width: 44px;
+            text-align: right;
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-family: ui-monospace, SFMono-Regular, monospace;
+        }
+
+        #weightsChart {
+            align-self: center;
+            width: 100%;
+            height: 90px;
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+        }
+
+        #resetWeightsButton {
+            width: 100%;
+            padding: 8px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        #resetWeightsButton:hover {
+            background: #2a313c;
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+<body>
+    <main id="appShell">
+        <h1 id="gameTitle">
+            <span style="color: #38bdf8;">H</span><span style="color: #facc15;">X</span><span style="color: #c084fc;">.</span><span style="color: #4ade80;">M</span><span style="color: #f87171;">X</span><span style="color: #38bdf8;">.</span><span style="color: #facc15;">T</span><span style="color: #c084fc;">E</span><span style="color: #4ade80;">T</span><span style="color: #f87171;">R</span><span style="color: #38bdf8;">I</span><span style="color: #facc15;">X</span>
+        </h1>
+        <div id="frames">
+            <div id="gameContainer">
+                <canvas id="tetrisCanvas" width="480" height="690"></canvas>
+                <div class="actions-bar">
+                    <button id="pauseButton" class="btn-action">Pause (P)</button>
+                    <button id="togglePanelButton" class="btn-action" aria-expanded="true">Hide Panel</button>
+                    <button id="restartButton" class="btn-action">Restart</button>
+                </div>
+            </div>
+
+            <div id="controlsPanel">
+                <div class="panel-section">
+                    <div class="stepper-row" style="margin-bottom: 0;">
+                        <span class="stepper-label">Hold Piece</span>
+                        <span class="stepper-val" style="font-size: 11px; color: var(--text-secondary);">Press C</span>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Lookahead Queue</h3>
+                    <div class="stepper-row">
+                        <span class="stepper-label">Preview Count</span>
+                        <button id="queueMinusBtn" class="step-btn">−</button>
+                        <span id="queueDisplay" class="stepper-val">5 shapes</span>
+                        <button id="queuePlusBtn" class="step-btn">+</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Playfield Dimensions</h3>
+                    <div class="stepper-row">
+                        <span class="stepper-label">Width</span>
+                        <button id="widthMinusBtn" class="step-btn">−</button>
+                        <span id="widthDisplay" class="stepper-val">10 cols</span>
+                        <button id="widthPlusBtn" class="step-btn">+</button>
+                    </div>
+                    <div class="stepper-row">
+                        <span class="stepper-label">Height</span>
+                        <button id="heightMinusBtn" class="step-btn">−</button>
+                        <span id="heightDisplay" class="stepper-val">23 rows</span>
+                        <button id="heightPlusBtn" class="step-btn">+</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Visual Assists</h3>
+                    <div class="toggle-group">
+                        <button id="toggleShadowBtn" class="toggle-btn active">Shadow ON</button>
+                        <button id="toggleProposalBtn" class="toggle-btn active">Best Match ON</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Pacing</h3>
+                    <div class="stepper-row">
+                        <span class="stepper-label">Speed</span>
+                        <button id="speedDownBtn" class="step-btn">−</button>
+                        <span id="speedDisplay" class="stepper-val">500 ms</span>
+                        <button id="speedUpBtn" class="step-btn">+</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3 style="display: flex; justify-content: space-between;">Auto-Play <span id="autoPlayStatus">ON</span></h3>
+                    <div class="toggle-group">
+                        <button id="autoPlayBtn" class="toggle-btn active">Auto-Play ON</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3>Distribution Weights</h3>
+                    <canvas id="weightsChart" width="220" height="90" aria-label="Distribution weights bar chart"></canvas>
+                    <div id="weightsContainer"></div>
+                    <button id="resetWeightsButton" type="button">Reset Distribution Weights</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="tetrix.js"></script>
+</body>
+</html>
