@@ -210,8 +210,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let shakeDurationRemaining = 0;
     const SHAKE_TOTAL_DURATION = 140;
     const SHAKE_INTENSITY = 4;
+
+    // Softened flash values
     let flashDurationRemaining = 0;
-    const FLASH_DURATION = 100;
+    const FLASH_DURATION = 120;
+    const FLASH_MAX_OPACITY = 0.30;
+
     let clearingLines = [];
     let clearAnimationTimer = 0;
     const CLEAR_ANIMATION_MS = 140;
@@ -877,7 +881,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function rotateShape() {
         if (!currentShape || isPaused || isGameOver || clearingLines.length > 0) return;
-        if (currentShapeIndex === 1) return; // O-piece does not need rotation
+        if (currentShapeIndex === 1) return; // O-piece does not rotate
 
         const rotated = rotateMatrix(currentShape);
         const nextRotationState = (currentRotationState + 1) % 4;
@@ -1298,11 +1302,13 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.textAlign = 'left';
         }
 
-        // Screen Flash Render
+        // Toned-down, smoothly eased playfield-only flash
         if (flashDurationRemaining > 0) {
-            const flashAlpha = Math.min(1.0, flashDurationRemaining / (FLASH_DURATION * 0.5));
-            ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha * 0.75})`;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const progress = flashDurationRemaining / FLASH_DURATION;
+            // Quadratic easing for a soft, natural fade
+            const alpha = Math.pow(progress, 2) * FLASH_MAX_OPACITY;
+            ctx.fillStyle = `rgba(224, 242, 254, ${alpha})`;
+            ctx.fillRect(0, 0, playfieldPixelWidth, boardHeight * BLOCK_SIZE);
             flashDurationRemaining = Math.max(0, flashDurationRemaining - deltaMs);
         }
 
