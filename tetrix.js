@@ -4,6 +4,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const isPhone = window.innerWidth <= 900 || ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
+    function requestPhoneFullscreen() {
+        if (!isPhone || document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+
+        document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+    }
+
+    document.addEventListener('pointerdown', requestPhoneFullscreen, { once: true, passive: true });
+
     const restartButton = document.getElementById('restartButton');
     const pauseButton = document.getElementById('pauseButton');
     const togglePanelButton = document.getElementById('togglePanelButton');
