@@ -70,8 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const DEFAULT_CONFIG = {
-        boardWidth: isPhone ? 18 : 10,
-        boardHeight: isPhone ? 19 : 23,
+        boardWidth: isPhone ? 9 : 10,
+        boardHeight: isPhone ? 17 : 23,
         previewCount: isPhone ? 4 : 5
     };
 
@@ -126,8 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const persisted = loadPersistedData();
-    let boardWidth = isPhone ? 18 : persisted.config.boardWidth;
-    let boardHeight = isPhone ? 19 : persisted.config.boardHeight;
+    let boardWidth = isPhone ? 9 : persisted.config.boardWidth;
+    let boardHeight = isPhone ? 17 : persisted.config.boardHeight;
     let previewCount = isPhone ? 4 : persisted.config.previewCount;
     let weights = persisted.weights;
     let keybinds = persisted.keybinds;
