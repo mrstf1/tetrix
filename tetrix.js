@@ -2,6 +2,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('tetrisCanvas');
     if (!canvas) return;
 
+    const isPhone = window.innerWidth <= 900 || ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
     const restartButton = document.getElementById('restartButton');
     const pauseButton = document.getElementById('pauseButton');
     const togglePanelButton = document.getElementById('togglePanelButton');
@@ -60,9 +62,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const DEFAULT_CONFIG = {
-        boardWidth: 10,
-        boardHeight: 23,
-        previewCount: 5
+        boardWidth: isPhone ? 18 : 10,
+        boardHeight: isPhone ? 19 : 23,
+        previewCount: isPhone ? 4 : 5
     };
 
     const DEFAULT_WEIGHTS = [20, 20, 20, 20, 20, 20, 20];
@@ -116,9 +118,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const persisted = loadPersistedData();
-    let boardWidth = persisted.config.boardWidth;
-    let boardHeight = persisted.config.boardHeight;
-    let previewCount = persisted.config.previewCount;
+    let boardWidth = isPhone ? 18 : persisted.config.boardWidth;
+    let boardHeight = isPhone ? 19 : persisted.config.boardHeight;
+    let previewCount = isPhone ? 4 : persisted.config.previewCount;
     let weights = persisted.weights;
     let keybinds = persisted.keybinds;
 
@@ -309,7 +311,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Explicit Auto-Play toggle listener
     if (autoPlayBtn) {
         autoPlayBtn.addEventListener('click', (e) => {
             e.stopPropagation();
