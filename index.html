@@ -23,6 +23,8 @@
         * {
             box-sizing: border-box;
             user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
         }
 
         body {
@@ -30,7 +32,7 @@
             background-color: var(--bg-body);
             color: var(--text-primary);
             margin: 0;
-            padding: 30px;
+            padding: 20px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -40,19 +42,20 @@
         #appShell {
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 12px;
+            max-width: 100%;
         }
 
         #frames {
             display: flex;
             align-items: stretch;
-            gap: 28px;
+            gap: 16px;
         }
 
         #gameTitle {
             margin: 0;
             text-align: center;
-            font-size: 64px;
+            font-size: 48px;
             font-weight: 900;
             letter-spacing: 4px;
             text-transform: uppercase;
@@ -67,25 +70,190 @@
             display: inline-block;
         }
 
+        #gameContainer {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .play-area {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+            justify-content: center;
+        }
+
         #tetrisCanvas {
             border: 1px solid var(--border-color);
             background: #090d12;
             border-radius: 8px;
             box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
             display: block;
+            touch-action: none;
+        }
+
+        #hudSidebar {
+            width: 160px;
+            background: #11161d;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .hud-section {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+
+        .hud-title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        .preview-box {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 38px;
+        }
+
+        .preview-box canvas {
+            display: block;
+        }
+
+        #nextQueueContainer {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 180px;
+            overflow-y: hidden;
+        }
+
+        .next-item-box {
+            background: var(--bg-panel);
+            border: 1px solid #21262d;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 28px;
+        }
+
+        .keys-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px;
+            font-family: ui-monospace, monospace;
+            font-size: 9px;
+            color: #c9d1d9;
+            line-height: 1.4;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .keys-card .keys-header {
+            font-weight: 700;
+            color: var(--text-secondary);
+            margin-bottom: 2px;
+            font-size: 9px;
+        }
+
+        .hud-divider {
+            height: 1px;
+            background: var(--border-color);
+            margin: 6px 0;
+        }
+
+        .metrics-card {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .metric-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+
+        .metric-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .metric-label {
+            font-size: 9px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            letter-spacing: 0.5px;
+        }
+
+        .metric-multiplier {
+            font-family: ui-monospace, monospace;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--accent-red);
+        }
+
+        .metric-val {
+            font-family: ui-monospace, monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .mode-selector {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-subtle);
+            padding: 3px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 5px 8px;
+            font-size: 11px;
+            font-weight: 700;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .mode-btn.active {
+            background: var(--accent);
+            color: #090d12;
         }
 
         .actions-bar {
             display: flex;
-            gap: 10px;
+            gap: 8px;
         }
 
         .btn-action {
             flex: 1;
-            padding: 10px 14px;
-            font-size: 13px;
+            padding: 8px 10px;
+            font-size: 12px;
             font-weight: 600;
-            letter-spacing: 0.3px;
             border: 1px solid transparent;
             border-radius: 6px;
             cursor: pointer;
@@ -98,25 +266,56 @@
             color: var(--text-primary);
         }
 
-        #pauseButton:hover {
-            background: #2a313c;
-        }
-
         #restartButton {
             background: #238636;
             color: #ffffff;
         }
 
-        #restartButton:hover {
-            background: #2ea043;
+        #togglePanelButton {
+            background: var(--bg-subtle);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        #touchControls {
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .touch-row {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+        }
+
+        .touch-btn {
+            flex: 1;
+            height: 44px;
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: manipulation;
+        }
+
+        .touch-btn:active {
+            background: #30363d;
+            border-color: var(--accent);
         }
 
         #controlsPanel {
             background: var(--bg-panel);
             border: 1px solid var(--border-color);
             border-radius: 8px;
-            padding: 8px;
-            width: 260px;
+            padding: 10px;
+            width: 250px;
             display: flex;
             flex-direction: column;
             gap: 6px;
@@ -127,40 +326,6 @@
             display: none;
         }
 
-        #togglePanelButton {
-            background: var(--bg-subtle);
-            border-color: var(--border-color);
-            color: var(--text-primary);
-        }
-
-        #togglePanelButton:hover {
-            background: #2a313c;
-        }
-
-        @media (max-width: 900px) {
-            body {
-                align-items: flex-start;
-            }
-
-            #frames {
-                flex-direction: column;
-            }
-        }
-
-        @media (max-width: 560px) {
-            body {
-                padding: 16px 10px;
-            }
-
-            .actions-bar {
-                flex-wrap: wrap;
-            }
-
-            .btn-action {
-                min-width: 140px;
-            }
-        }
-
         .panel-section {
             display: flex;
             flex-direction: column;
@@ -169,7 +334,7 @@
 
         h3 {
             margin: 0;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
             letter-spacing: 1px;
             color: var(--text-secondary);
@@ -184,14 +349,13 @@
         .toggle-btn {
             flex: 1;
             padding: 4px 8px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             background: var(--bg-subtle);
             border: 1px solid var(--border-color);
             color: var(--text-secondary);
             border-radius: 6px;
             cursor: pointer;
-            transition: all 0.15s ease;
             text-align: center;
         }
 
@@ -209,19 +373,18 @@
             background: var(--bg-subtle);
             border-radius: 6px;
             border: 1px solid var(--border-color);
-            margin-bottom: 2px;
         }
 
         .stepper-label {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             color: var(--text-secondary);
-            width: 100px;
+            width: 90px;
         }
 
         .stepper-val {
-            font-family: ui-monospace, SFMono-Regular, monospace;
-            font-size: 13px;
+            font-family: ui-monospace, monospace;
+            font-size: 12px;
             color: var(--accent);
             font-weight: 600;
             width: 65px;
@@ -240,16 +403,6 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            transition: background 0.15s;
-        }
-
-        .step-btn:hover {
-            background: #484f58;
-        }
-
-        .step-btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
         }
 
         .weight-row {
@@ -260,46 +413,38 @@
             background: var(--bg-subtle);
             border-radius: 6px;
             border: 1px solid var(--border-color);
-            margin-bottom: 2px;
         }
 
         .piece-label {
             font-weight: 600;
-            width: 70px;
-            font-size: 12px;
+            width: 65px;
+            font-size: 11px;
         }
 
         .weight-input {
-            width: 42px;
+            width: 40px;
             text-align: center;
             background: #0d1117;
             border: 1px solid var(--border-color);
             color: var(--text-primary);
             padding: 2px;
             border-radius: 4px;
-            font-family: ui-monospace, SFMono-Regular, monospace;
-            font-size: 12px;
-            margin: 0 4px;
-        }
-
-        .weight-input::-webkit-outer-spin-button,
-        .weight-input::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
+            font-family: ui-monospace, monospace;
+            font-size: 11px;
         }
 
         .percentage-display {
-            width: 44px;
+            width: 40px;
             text-align: right;
-            font-size: 11px;
+            font-size: 10px;
             color: var(--text-secondary);
-            font-family: ui-monospace, SFMono-Regular, monospace;
+            font-family: ui-monospace, monospace;
         }
 
         #weightsChart {
             align-self: center;
             width: 100%;
-            height: 60px;
+            height: 55px;
             background: var(--bg-subtle);
             border: 1px solid var(--border-color);
             border-radius: 6px;
@@ -307,46 +452,158 @@
 
         #resetWeightsButton {
             width: 100%;
-            padding: 6px 10px;
-            font-size: 12px;
+            padding: 6px;
+            font-size: 11px;
             font-weight: 600;
             background: var(--bg-subtle);
             border: 1px solid var(--border-color);
             color: var(--text-secondary);
             border-radius: 6px;
             cursor: pointer;
-            transition: all 0.15s ease;
         }
 
-        #resetWeightsButton:hover {
-            background: #2a313c;
-            color: var(--text-primary);
+        @media (max-width: 900px) {
+            body {
+                padding: 10px 4px;
+                align-items: flex-start;
+            }
+
+            #frames {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            #gameTitle {
+                font-size: 32px;
+            }
+
+            #hudSidebar {
+                width: 110px;
+                padding: 6px;
+            }
+
+            .keys-card {
+                display: none;
+            }
+
+            #touchControls {
+                display: flex;
+            }
+
+            #controlsPanel {
+                width: 100%;
+                max-width: 420px;
+            }
         }
     </style>
 </head>
 <body>
     <main id="appShell">
+        <!-- Rainbow Title with all 7 piece colours: Cyan, Yellow, Lavender, Mint, Coral, Blue, Orange -->
         <h1 id="gameTitle">
-            <span style="color: #38bdf8;">H</span><span style="color: #facc15;">X</span><span style="color: #c084fc;">.</span><span style="color: #4ade80;">M</span><span style="color: #f87171;">X</span><span style="color: #38bdf8;">.</span><span style="color: #facc15;">T</span><span style="color: #c084fc;">E</span><span style="color: #4ade80;">T</span><span style="color: #f87171;">R</span><span style="color: #38bdf8;">I</span><span style="color: #facc15;">X</span>
+            <span style="color: #38bdf8;">H</span><span style="color: #facc15;">X</span><span style="color: #c084fc;">.</span><span style="color: #4ade80;">M</span><span style="color: #f87171;">X</span><span style="color: #3b82f6;">.</span><span style="color: #f97316;">T</span><span style="color: #38bdf8;">E</span><span style="color: #facc15;">T</span><span style="color: #c084fc;">R</span><span style="color: #4ade80;">I</span><span style="color: #f87171;">X</span>
         </h1>
+
+        <!-- Mode Selector -->
+        <div class="mode-selector">
+            <button id="modeMarathon" class="mode-btn active">Marathon</button>
+            <button id="modeSprint" class="mode-btn">Sprint (40L)</button>
+            <button id="modeUltra" class="mode-btn">Ultra (2M)</button>
+        </div>
+
         <div id="frames">
             <div id="gameContainer">
-                <canvas id="tetrisCanvas" width="480" height="690"></canvas>
+                <div class="play-area">
+                    <canvas id="tetrisCanvas" width="300" height="690"></canvas>
+                    
+                    <aside id="hudSidebar">
+                        <div>
+                            <div class="hud-section">
+                                <span class="hud-title">Current</span>
+                                <div class="preview-box">
+                                    <canvas id="currentCanvas" width="70" height="34"></canvas>
+                                </div>
+                            </div>
+
+                            <div class="hud-section">
+                                <span class="hud-title">Hold</span>
+                                <div class="preview-box">
+                                    <canvas id="holdCanvas" width="70" height="34"></canvas>
+                                </div>
+                            </div>
+
+                            <div class="hud-section">
+                                <span class="hud-title" id="nextQueueLabel">Next (5)</span>
+                                <div id="nextQueueContainer"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="keys-card">
+                                <span class="keys-header">KEYS</span>
+                                <span>← → MOVE  ↑ ROT</span>
+                                <span>↓ SOFT  SPC DROP</span>
+                                <span>C HOLD  P PAUSE</span>
+                                <span>ENTER BEST MATCH</span>
+                            </div>
+
+                            <div class="hud-divider"></div>
+
+                            <div class="metrics-card">
+                                <div class="metric-group" id="timerGroup" style="display: none;">
+                                    <span class="metric-label" id="timerLabel">TIME</span>
+                                    <span id="timerDisplay" class="metric-val">00:00</span>
+                                </div>
+
+                                <div class="metric-group">
+                                    <div class="metric-header">
+                                        <span class="metric-label" id="linesOrScoreLabel">SCORE</span>
+                                        <span id="multiplierDisplay" class="metric-multiplier">x1</span>
+                                    </div>
+                                    <span id="scoreDisplay" class="metric-val">000000</span>
+                                </div>
+
+                                <div class="metric-group">
+                                    <span class="metric-label">★ BEST</span>
+                                    <span id="highScoreDisplay" class="metric-val">000000</span>
+                                </div>
+
+                                <div class="metric-group">
+                                    <span class="metric-label">SPEED</span>
+                                    <span id="speedMetricDisplay" class="metric-val">0500 ms</span>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+
+                <!-- Action Toolbar -->
                 <div class="actions-bar">
                     <button id="pauseButton" class="btn-action">Pause (P)</button>
-                    <button id="togglePanelButton" class="btn-action" aria-expanded="true">Hide Panel</button>
+                    <button id="togglePanelButton" class="btn-action">Panel</button>
                     <button id="restartButton" class="btn-action">Restart</button>
+                </div>
+
+                <!-- Touch D-Pad Controls -->
+                <div id="touchControls">
+                    <div class="touch-row">
+                        <button class="touch-btn" data-action="hold">HOLD (C)</button>
+                        <button class="touch-btn" data-action="rotate">ROTATE (↑)</button>
+                        <button class="touch-btn" data-action="bestMatch">BEST (⏎)</button>
+                    </div>
+                    <div class="touch-row">
+                        <button class="touch-btn" data-action="moveLeft">◀ LEFT</button>
+                        <button class="touch-btn" data-action="softDrop">▼ DOWN</button>
+                        <button class="touch-btn" data-action="moveRight">RIGHT ▶</button>
+                    </div>
+                    <div class="touch-row">
+                        <button class="touch-btn" data-action="hardDrop" style="background: rgba(88, 166, 255, 0.15); border-color: var(--accent);">HARD DROP (SPACE)</button>
+                    </div>
                 </div>
             </div>
 
+            <!-- Settings Panel (Superfluous Hold row removed) -->
             <div id="controlsPanel">
-                <div class="panel-section">
-                    <div class="stepper-row" style="margin-bottom: 0;">
-                        <span class="stepper-label">Hold Piece</span>
-                        <span class="stepper-val" style="font-size: 11px; color: var(--text-secondary);">Press C</span>
-                    </div>
-                </div>
-
                 <div class="panel-section">
                     <h3>Lookahead Queue</h3>
                     <div class="stepper-row">
@@ -376,8 +633,8 @@
                 <div class="panel-section">
                     <h3>Visual Assists</h3>
                     <div class="toggle-group">
-                        <button id="toggleShadowBtn" class="toggle-btn active">Shadow ON</button>
-                        <button id="toggleProposalBtn" class="toggle-btn active">Best Match ON</button>
+                        <button id="toggleShadowBtn" class="toggle-btn">Shadow OFF</button>
+                        <button id="toggleProposalBtn" class="toggle-btn">Best Match OFF</button>
                     </div>
                 </div>
 

@@ -17,15 +17,123 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoPlayBtn = document.getElementById('autoPlayBtn');
     const autoPlayStatus = document.getElementById('autoPlayStatus');
 
+    const modeMarathon = document.getElementById('modeMarathon');
+    const modeSprint = document.getElementById('modeSprint');
+    const modeUltra = document.getElementById('modeUltra');
+    const timerGroup = document.getElementById('timerGroup');
+    const timerLabel = document.getElementById('timerLabel');
+    const timerDisplay = document.getElementById('timerDisplay');
+    const linesOrScoreLabel = document.getElementById('linesOrScoreLabel');
+
+    const currentCanvas = document.getElementById('currentCanvas');
+    const holdCanvas = document.getElementById('holdCanvas');
+    const nextQueueContainer = document.getElementById('nextQueueContainer');
+    const nextQueueLabel = document.getElementById('nextQueueLabel');
+    const scoreDisplay = document.getElementById('scoreDisplay');
+    const highScoreDisplay = document.getElementById('highScoreDisplay');
+    const speedMetricDisplay = document.getElementById('speedMetricDisplay');
+    const multiplierDisplay = document.getElementById('multiplierDisplay');
+
     const ctx = canvas.getContext('2d');
     const BLOCK_SIZE = 30;
-    const SIDEBAR_WIDTH = 6;
 
-    let boardWidth = 10;
-    let boardHeight = 23;
-    let previewCount = 5;
+    function setupResponsivePanel() {
+        if (window.innerWidth <= 900) {
+            controlsPanel.hidden = true;
+            togglePanelButton.textContent = 'Show Panel';
+        } else {
+            controlsPanel.hidden = false;
+            togglePanelButton.textContent = 'Hide Panel';
+        }
+    }
+    setupResponsivePanel();
 
-    // Web Audio synthesizer engine (fallback & zero-latency audio without DOM crashes)
+    const STORAGE_KEYS = {
+        CONFIG: 'hx_tetrix_config',
+        WEIGHTS: 'hx_tetrix_weights',
+        KEYBINDS: 'hx_tetrix_keybinds',
+        VOLUME: 'hx_tetrix_volume',
+        MUSIC: 'hx_tetrix_music',
+        HIGHSCORE: 'hx_tetrix_highscore',
+        SPRINT_BEST: 'hx_tetrix_sprint_best',
+        ULTRA_BEST: 'hx_tetrix_ultra_best'
+    };
+
+    const DEFAULT_CONFIG = {
+        boardWidth: 10,
+        boardHeight: 23,
+        previewCount: 5
+    };
+
+    const DEFAULT_WEIGHTS = [20, 20, 20, 20, 20, 20, 20];
+
+    const DEFAULT_KEYBINDS = {
+        moveLeft: ['ArrowLeft'],
+        moveRight: ['ArrowRight'],
+        softDrop: ['ArrowDown'],
+        rotate: ['ArrowUp'],
+        hardDrop: [' '],
+        hold: ['c', 'C'],
+        pause: ['p', 'P'],
+        bestMatch: ['Enter']
+    };
+
+    function loadPersistedData() {
+        let config = { ...DEFAULT_CONFIG };
+        let loadedWeights = [...DEFAULT_WEIGHTS];
+        let keybinds = { ...DEFAULT_KEYBINDS };
+
+        try {
+            const savedConfig = JSON.parse(localStorage.getItem(STORAGE_KEYS.CONFIG));
+            if (savedConfig && typeof savedConfig === 'object') {
+                if (Number.isInteger(savedConfig.boardWidth) && savedConfig.boardWidth >= 4 && savedConfig.boardWidth <= 20) {
+                    config.boardWidth = savedConfig.boardWidth;
+                }
+                if (Number.isInteger(savedConfig.boardHeight) && savedConfig.boardHeight >= 6 && savedConfig.boardHeight <= 30) {
+                    config.boardHeight = savedConfig.boardHeight;
+                }
+                if (Number.isInteger(savedConfig.previewCount) && savedConfig.previewCount >= 1 && savedConfig.previewCount <= 10) {
+                    config.previewCount = savedConfig.previewCount;
+                }
+            }
+        } catch (e) {}
+
+        try {
+            const savedWeights = JSON.parse(localStorage.getItem(STORAGE_KEYS.WEIGHTS));
+            if (Array.isArray(savedWeights) && savedWeights.length === 7) {
+                loadedWeights = savedWeights.map(w => (Number.isFinite(w) && w >= 0 ? w : 20));
+            }
+        } catch (e) {}
+
+        try {
+            const savedKeybinds = JSON.parse(localStorage.getItem(STORAGE_KEYS.KEYBINDS));
+            if (savedKeybinds && typeof savedKeybinds === 'object') {
+                keybinds = { ...DEFAULT_KEYBINDS, ...savedKeybinds };
+            }
+        } catch (e) {}
+
+        return { config, weights: loadedWeights, keybinds };
+    }
+
+    const persisted = loadPersistedData();
+    let boardWidth = persisted.config.boardWidth;
+    let boardHeight = persisted.config.boardHeight;
+    let previewCount = persisted.config.previewCount;
+    let weights = persisted.weights;
+    let keybinds = persisted.keybinds;
+
+    function saveDimensionsAndQueue() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify({ boardWidth, boardHeight, previewCount }));
+        } catch (e) {}
+    }
+
+    function saveWeights() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.WEIGHTS, JSON.stringify(weights));
+        } catch (e) {}
+    }
+
     let audioCtx = null;
     function initAudio() {
         if (!audioCtx) {
@@ -38,9 +146,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const defaultVolume = 0.4;
-    let audioVolume = Number(localStorage.getItem('hx_tetrix_volume'));
+    let audioVolume = Number(localStorage.getItem(STORAGE_KEYS.VOLUME));
     audioVolume = Number.isFinite(audioVolume) ? Math.min(1, Math.max(0, audioVolume)) : defaultVolume;
-    let musicEnabled = localStorage.getItem('hx_tetrix_music') === 'on';
+    let musicEnabled = localStorage.getItem(STORAGE_KEYS.MUSIC) === 'on';
 
     const sounds = {
         move: new Audio('sounds/tone1.ogg'),
@@ -54,13 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
     music.loop = true;
     music.preload = 'auto';
 
-    const baseSoundVolumes = {
-        move: 0.25,
-        rotate: 0.35,
-        drop: 0.45,
-        clear: 0.55,
-        gameOver: 0.6
-    };
+    const baseSoundVolumes = { move: 0.25, rotate: 0.35, drop: 0.45, clear: 0.55, gameOver: 0.6 };
 
     function playTone(freq, type = 'sine', duration = 0.1, gainVal = 0.2) {
         initAudio();
@@ -86,8 +188,8 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 sound.currentTime = 0;
                 sound.volume = Math.min(1, (baseSoundVolumes[type] || 0.4) * (audioVolume / defaultVolume));
-                const promise = sound.play();
-                if (promise) promise.catch(() => playSyntheticSound(type));
+                const p = sound.play();
+                if (p) p.catch(() => playSyntheticSound(type));
             } catch (e) {
                 playSyntheticSound(type);
             }
@@ -120,7 +222,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (musicToggleBtn) {
             musicToggleBtn.textContent = musicEnabled ? 'ON' : 'OFF';
             musicToggleBtn.classList.toggle('active', musicEnabled);
-            musicToggleBtn.setAttribute('aria-pressed', String(musicEnabled));
         }
     }
 
@@ -130,12 +231,9 @@ document.addEventListener('DOMContentLoaded', () => {
         musicToggleBtn.addEventListener('click', () => {
             initAudio();
             musicEnabled = !musicEnabled;
-            if (musicEnabled) {
-                music.play().catch(() => {});
-            } else {
-                music.pause();
-            }
-            localStorage.setItem('hx_tetrix_music', musicEnabled ? 'on' : 'off');
+            if (musicEnabled) music.play().catch(() => {});
+            else music.pause();
+            localStorage.setItem(STORAGE_KEYS.MUSIC, musicEnabled ? 'on' : 'off');
             applyAudioSettings();
         });
     }
@@ -143,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (volumeSlider) {
         volumeSlider.addEventListener('input', (e) => {
             audioVolume = parseFloat(e.target.value);
-            localStorage.setItem('hx_tetrix_volume', String(audioVolume));
+            localStorage.setItem(STORAGE_KEYS.VOLUME, String(audioVolume));
             applyAudioSettings();
         });
     }
@@ -154,7 +252,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const heightMinusBtn = document.getElementById('heightMinusBtn');
     const heightPlusBtn = document.getElementById('heightPlusBtn');
     const heightDisplay = document.getElementById('heightDisplay');
-
     const queueMinusBtn = document.getElementById('queueMinusBtn');
     const queuePlusBtn = document.getElementById('queuePlusBtn');
     const queueDisplay = document.getElementById('queueDisplay');
@@ -170,25 +267,56 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     const SHAPE_NAMES = ['I-Piece', 'O-Piece', 'T-Piece', 'S-Piece', 'Z-Piece', 'J-Piece', 'L-Piece'];
+    const COLORS = [null, '#38bdf8', '#facc15', '#c084fc', '#4ade80', '#f87171', '#3b82f6', '#f97316'];
 
-    const COLORS = [
-        null,
-        '#38bdf8', // Cyan
-        '#facc15', // Yellow
-        '#c084fc', // Lavender
-        '#4ade80', // Mint
-        '#f87171', // Coral
-        '#3b82f6', // Blue
-        '#f97316'  // Orange
-    ];
+    let gameMode = 'marathon';
+    let modeStartTime = 0;
+    let modeElapsedTime = 0;
+    const SPRINT_TARGET_LINES = 40;
+    const ULTRA_DURATION_MS = 120000;
 
-    const DEFAULT_WEIGHTS = [20, 20, 20, 20, 20, 20, 20];
-    let weights = [...DEFAULT_WEIGHTS];
     let dropIntervalMs = 500;
     let isPaused = false;
     let isGameOver = false;
-    let showShadow = true;
-    let showBestMatch = true;
+    let gameResultText = 'GAME OVER';
+
+    let showShadow = false;
+    let showBestMatch = false;
+    let autoPlay = true;
+
+    function syncVisualAssistsUI() {
+        if (toggleShadowBtn) {
+            toggleShadowBtn.classList.toggle('active', showShadow);
+            toggleShadowBtn.textContent = showShadow ? 'Shadow ON' : 'Shadow OFF';
+        }
+        if (toggleProposalBtn) {
+            toggleProposalBtn.classList.toggle('active', showBestMatch);
+            toggleProposalBtn.textContent = showBestMatch ? 'Best Match ON' : 'Best Match OFF';
+        }
+    }
+
+    function setAutoPlay(val) {
+        autoPlay = val;
+        if (autoPlayBtn) {
+            autoPlayBtn.classList.toggle('active', autoPlay);
+            autoPlayBtn.textContent = autoPlay ? 'Auto-Play ON' : 'Auto-Play OFF';
+        }
+        if (autoPlayStatus) {
+            autoPlayStatus.textContent = autoPlay ? 'ON' : 'OFF';
+        }
+        if (autoPlay && currentShape) {
+            triggerBestPlacementCalculation(currentShape);
+        }
+    }
+
+    // Explicit Auto-Play toggle listener
+    if (autoPlayBtn) {
+        autoPlayBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            initAudio();
+            setAutoPlay(!autoPlay);
+        });
+    }
 
     let board = Array.from({ length: boardHeight }, () => Array(boardWidth).fill(0));
     let currentShape = null;
@@ -200,35 +328,173 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentX = 0;
     let currentY = 0;
     let score = 0;
-    let highScore = parseInt(localStorage.getItem('hx_tetrix_highscore') || '0', 10);
     let totalLinesCleared = 0;
     let gameLevel = 1;
     let lastMultiplier = 1;
     let bestProposal = null;
 
-    // Shake, Line-clearing delay & Flash FX state
+    function getHighScoreKey() {
+        if (gameMode === 'sprint') return STORAGE_KEYS.SPRINT_BEST;
+        if (gameMode === 'ultra') return STORAGE_KEYS.ULTRA_BEST;
+        return STORAGE_KEYS.HIGHSCORE;
+    }
+
+    function getHighScore() {
+        const key = getHighScoreKey();
+        const saved = localStorage.getItem(key);
+        if (!saved) return 0;
+        return gameMode === 'sprint' ? parseFloat(saved) : parseInt(saved, 10);
+    }
+
+    let solverWorker = null;
+    let currentCalcId = 0;
+
+    const solverWorkerScript = `
+        function rotateMatrix(matrix) {
+            if (!matrix || matrix.length === 0) return matrix;
+            return matrix[0].map((_, index) => matrix.map(row => row[index]).reverse());
+        }
+
+        function checkCollision(shape, targetX, targetY, board, boardWidth, boardHeight) {
+            if (!shape) return false;
+            for (let y = 0; y < shape.length; y++) {
+                for (let x = 0; x < shape[y].length; x++) {
+                    if (shape[y][x] !== 0) {
+                        const newX = targetX + x;
+                        const newY = targetY + y;
+                        if (newX < 0 || newX >= boardWidth) return true;
+                        if (newY >= boardHeight) return true;
+                        if (newY >= 0 && board[newY] && board[newY][newX] !== 0) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        self.onmessage = function(e) {
+            const { calcId, baseShape, board, boardWidth, boardHeight } = e.data;
+            if (!baseShape || !board) {
+                self.postMessage({ calcId, bestTarget: null });
+                return;
+            }
+
+            let bestScore = -Infinity;
+            let bestTarget = null;
+            const rotations = [];
+            let curr = baseShape;
+            for (let r = 0; r < 4; r++) {
+                rotations.push({ shape: curr, rot: r });
+                curr = rotateMatrix(curr);
+            }
+
+            for (const { shape, rot } of rotations) {
+                const shapeW = shape[0].length;
+                for (let x = 0; x <= boardWidth - shapeW; x++) {
+                    if (checkCollision(shape, x, 0, board, boardWidth, boardHeight)) continue;
+                    let y = 0;
+                    while (!checkCollision(shape, x, y + 1, board, boardWidth, boardHeight)) y++;
+
+                    const simBoard = board.map(row => [...row]);
+                    let placementValid = true;
+
+                    for (let sy = 0; sy < shape.length; sy++) {
+                        for (let sx = 0; sx < shape[sy].length; sx++) {
+                            if (shape[sy][sx] !== 0) {
+                                const by = y + sy;
+                                const bx = x + sx;
+                                if (by >= 0 && by < boardHeight && bx >= 0 && bx < boardWidth) simBoard[by][bx] = 1;
+                                else placementValid = false;
+                            }
+                        }
+                    }
+
+                    if (!placementValid) continue;
+
+                    let linesCleared = 0;
+                    for (let r = 0; r < boardHeight; r++) {
+                        if (!simBoard[r].includes(0)) linesCleared++;
+                    }
+
+                    let holes = 0;
+                    const colHeights = new Array(boardWidth).fill(0);
+                    for (let c = 0; c < boardWidth; c++) {
+                        let blockSeen = false;
+                        for (let r = 0; r < boardHeight; r++) {
+                            if (simBoard[r][c] !== 0) {
+                                if (!blockSeen) {
+                                    colHeights[c] = boardHeight - r;
+                                    blockSeen = true;
+                                }
+                            } else if (blockSeen) {
+                                holes++;
+                            }
+                        }
+                    }
+
+                    let roughness = 0;
+                    for (let c = 0; c < boardWidth - 1; c++) {
+                        roughness += Math.abs(colHeights[c] - colHeights[c + 1]);
+                    }
+
+                    const aggregateHeight = colHeights.reduce((acc, h) => acc + h, 0);
+                    const scoreEvaluation = (linesCleared * 40.0) - (aggregateHeight * 0.5) - (holes * 9.0) - (roughness * 1.5) + (y * 1.2);
+
+                    if (scoreEvaluation > bestScore) {
+                        bestScore = scoreEvaluation;
+                        bestTarget = { x, y, rotation: rot, shape };
+                    }
+                }
+            }
+            self.postMessage({ calcId, bestTarget });
+        };
+    `;
+
+    try {
+        const blob = new Blob([solverWorkerScript], { type: 'application/javascript' });
+        solverWorker = new Worker(URL.createObjectURL(blob));
+        solverWorker.onmessage = function(e) {
+            const { calcId, bestTarget } = e.data;
+            if (calcId === currentCalcId) {
+                bestProposal = bestTarget;
+            }
+        };
+    } catch (err) {
+        solverWorker = null;
+    }
+
+    function triggerBestPlacementCalculation(shape) {
+        if (!shape || isGameOver) {
+            bestProposal = null;
+            return;
+        }
+        currentCalcId++;
+        if (solverWorker) {
+            solverWorker.postMessage({
+                calcId: currentCalcId,
+                baseShape: shape,
+                board: board,
+                boardWidth: boardWidth,
+                boardHeight: boardHeight
+            });
+        }
+    }
+
     let shakeDurationRemaining = 0;
     const SHAKE_TOTAL_DURATION = 140;
     const SHAKE_INTENSITY = 4;
-
-    // Softened flash values
     let flashDurationRemaining = 0;
     const FLASH_DURATION = 120;
     const FLASH_MAX_OPACITY = 0.30;
-
     let clearingLines = [];
     let clearAnimationTimer = 0;
     const CLEAR_ANIMATION_MS = 140;
 
-    let autoPlay = true;
-    let lastInputTime = Date.now();
     let lockDelayMs = 500;
     let isLocked = false;
     let lastLockTime = 0;
     let dropAccumulator = 0;
     let lastTimestamp = performance.now();
 
-    // Square Particles System
     class Particle {
         constructor(x, y, color) {
             this.x = x;
@@ -246,7 +512,7 @@ document.addEventListener('DOMContentLoaded', () => {
         update() {
             this.x += this.vx;
             this.y += this.vy;
-            this.vy += 0.25; // Gravity
+            this.vy += 0.25;
             this.angle += this.vRot;
             this.life = Math.max(0, this.life - this.decay);
         }
@@ -276,9 +542,7 @@ document.addEventListener('DOMContentLoaded', () => {
         update() {
             for (let i = this.particles.length - 1; i >= 0; i--) {
                 this.particles[i].update();
-                if (this.particles[i].life <= 0) {
-                    this.particles.splice(i, 1);
-                }
+                if (this.particles[i].life <= 0) this.particles.splice(i, 1);
             }
         }
 
@@ -289,22 +553,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const particleSystem = new ParticleSystem();
 
-    function updateLastInput() {
+    function onGameplayInput() {
         initAudio();
-        lastInputTime = Date.now();
+        if (autoPlay) {
+            setAutoPlay(false);
+        }
     }
 
     function checkAndUpdateHighScore() {
-        if (score > highScore) {
-            highScore = score;
-            try {
-                localStorage.setItem('hx_tetrix_highscore', String(highScore));
-            } catch (e) {}
+        const key = getHighScoreKey();
+        if (gameMode === 'sprint') {
+            const currentBest = getHighScore();
+            const timeTakenSec = modeElapsedTime / 1000;
+            if (currentBest === 0 || timeTakenSec < currentBest) {
+                localStorage.setItem(key, timeTakenSec.toFixed(2));
+            }
+        } else {
+            const currentBest = getHighScore();
+            if (score > currentBest) {
+                localStorage.setItem(key, String(score));
+            }
         }
     }
 
     function resizeCanvas() {
-        canvas.width = (boardWidth + SIDEBAR_WIDTH) * BLOCK_SIZE;
+        canvas.width = boardWidth * BLOCK_SIZE;
         canvas.height = boardHeight * BLOCK_SIZE;
     }
 
@@ -313,7 +586,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function getRandomShapeIndex() {
         const totalWeight = weights.reduce((sum, w) => sum + w, 0);
         if (totalWeight <= 0) return 0;
-
         let random = Math.random() * totalWeight;
         for (let i = 0; i < weights.length; i++) {
             if (random < weights[i]) return i;
@@ -328,19 +600,97 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function drawPieceToCanvas(targetCanvas, shapeIndex, cellSize = 10) {
+        if (!targetCanvas) return;
+        const targetCtx = targetCanvas.getContext('2d');
+        targetCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+        if (shapeIndex < 0 || shapeIndex >= SHAPES.length) return;
+
+        const shape = SHAPES[shapeIndex];
+        const color = COLORS[shapeIndex + 1];
+        const offX = Math.floor((targetCanvas.width - shape[0].length * cellSize) / 2);
+        const offY = Math.floor((targetCanvas.height - shape.length * cellSize) / 2);
+
+        for (let y = 0; y < shape.length; y++) {
+            for (let x = 0; x < shape[y].length; x++) {
+                if (shape[y][x] !== 0) {
+                    targetCtx.fillStyle = color;
+                    targetCtx.fillRect(offX + x * cellSize + 1, offY + y * cellSize + 1, cellSize - 2, cellSize - 2);
+                }
+            }
+        }
+    }
+
+    function formatTime(ms) {
+        const totalSec = Math.floor(ms / 1000);
+        const mins = Math.floor(totalSec / 60);
+        const secs = totalSec % 60;
+        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function updateDOMHud() {
+        const best = getHighScore();
+        if (gameMode === 'sprint') {
+            linesOrScoreLabel.textContent = 'LINES LEFT';
+            scoreDisplay.textContent = String(Math.max(0, SPRINT_TARGET_LINES - totalLinesCleared)).padStart(2, '0');
+            highScoreDisplay.textContent = best > 0 ? `${best}s` : '--';
+        } else {
+            linesOrScoreLabel.textContent = 'SCORE';
+            scoreDisplay.textContent = String(score).padStart(6, '0');
+            highScoreDisplay.textContent = String(best).padStart(6, '0');
+        }
+
+        speedMetricDisplay.textContent = `${String(dropIntervalMs).padStart(4, '0')} ms`;
+        multiplierDisplay.textContent = `x${lastMultiplier}`;
+
+        if (gameMode === 'sprint') {
+            timerGroup.style.display = 'flex';
+            timerLabel.textContent = 'ELAPSED';
+            timerDisplay.textContent = formatTime(modeElapsedTime);
+        } else if (gameMode === 'ultra') {
+            timerGroup.style.display = 'flex';
+            timerLabel.textContent = 'REMAINING';
+            const remaining = Math.max(0, ULTRA_DURATION_MS - modeElapsedTime);
+            timerDisplay.textContent = formatTime(remaining);
+        } else {
+            timerGroup.style.display = 'none';
+        }
+
+        drawPieceToCanvas(currentCanvas, currentShapeIndex, 10);
+        drawPieceToCanvas(holdCanvas, heldShapeIndex, 10);
+
+        if (nextQueueLabel) nextQueueLabel.textContent = `Next (${previewCount})`;
+        if (nextQueueContainer) {
+            nextQueueContainer.innerHTML = '';
+            for (let i = 0; i < previewCount; i++) {
+                const shapeIdx = nextShapesQueue[i];
+                const box = document.createElement('div');
+                box.className = 'next-item-box';
+                const itemCanvas = document.createElement('canvas');
+                itemCanvas.width = 60;
+                itemCanvas.height = 26;
+                drawPieceToCanvas(itemCanvas, shapeIdx, 7);
+                box.appendChild(itemCanvas);
+                nextQueueContainer.appendChild(box);
+            }
+        }
+    }
+
     function updateQueueUI() {
         if (queueDisplay) {
             queueDisplay.textContent = `${previewCount} ${previewCount === 1 ? 'shape' : 'shapes'}`;
         }
+        updateDOMHud();
     }
 
     function changeQueueSize(delta) {
         previewCount = Math.min(10, Math.max(1, previewCount + delta));
+        saveDimensionsAndQueue();
         updateQueueUI();
     }
 
-    if (queueMinusBtn) queueMinusBtn.addEventListener('click', () => { changeQueueSize(-1); queueMinusBtn.blur(); updateLastInput(); });
-    if (queuePlusBtn) queuePlusBtn.addEventListener('click', () => { changeQueueSize(1); queuePlusBtn.blur(); updateLastInput(); });
+    if (queueMinusBtn) queueMinusBtn.addEventListener('click', () => changeQueueSize(-1));
+    if (queuePlusBtn) queuePlusBtn.addEventListener('click', () => changeQueueSize(1));
 
     function getMinAllowedWidth() {
         let maxCol = 3;
@@ -359,8 +709,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (board[y][x] !== 0) highestBlockRow = Math.min(highestBlockRow, y);
             }
         }
-        const occupiedHeight = boardHeight - highestBlockRow;
-        return Math.max(6, occupiedHeight + 3);
+        return Math.max(6, (boardHeight - highestBlockRow) + 3);
     }
 
     function updateDimensionUI() {
@@ -389,9 +738,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        saveDimensionsAndQueue();
         resizeCanvas();
         updateDimensionUI();
-        bestProposal = computeBestPlacement(currentShape);
+        triggerBestPlacementCalculation(currentShape);
     }
 
     function changeHeight(delta) {
@@ -407,39 +757,33 @@ document.addEventListener('DOMContentLoaded', () => {
             currentY++;
         }
 
+        saveDimensionsAndQueue();
         resizeCanvas();
         updateDimensionUI();
-        bestProposal = computeBestPlacement(currentShape);
+        triggerBestPlacementCalculation(currentShape);
     }
 
-    if (widthMinusBtn) widthMinusBtn.addEventListener('click', () => { changeWidth(-1); widthMinusBtn.blur(); updateLastInput(); });
-    if (widthPlusBtn) widthPlusBtn.addEventListener('click', () => { changeWidth(1); widthPlusBtn.blur(); updateLastInput(); });
-    if (heightMinusBtn) heightMinusBtn.addEventListener('click', () => { changeHeight(-1); heightMinusBtn.blur(); updateLastInput(); });
-    if (heightPlusBtn) heightPlusBtn.addEventListener('click', () => { changeHeight(1); heightPlusBtn.blur(); updateLastInput(); });
+    if (widthMinusBtn) widthMinusBtn.addEventListener('click', () => changeWidth(-1));
+    if (widthPlusBtn) widthPlusBtn.addEventListener('click', () => changeWidth(1));
+    if (heightMinusBtn) heightMinusBtn.addEventListener('click', () => changeHeight(-1));
+    if (heightPlusBtn) heightPlusBtn.addEventListener('click', () => changeHeight(1));
 
     if (toggleShadowBtn) {
         toggleShadowBtn.addEventListener('click', () => {
             showShadow = !showShadow;
-            toggleShadowBtn.classList.toggle('active', showShadow);
-            toggleShadowBtn.textContent = showShadow ? 'Shadow ON' : 'Shadow OFF';
-            toggleShadowBtn.blur();
-            updateLastInput();
+            syncVisualAssistsUI();
         });
     }
 
     if (toggleProposalBtn) {
         toggleProposalBtn.addEventListener('click', () => {
             showBestMatch = !showBestMatch;
-            toggleProposalBtn.classList.toggle('active', showBestMatch);
-            toggleProposalBtn.textContent = showBestMatch ? 'Best Match ON' : 'Best Match OFF';
-            toggleProposalBtn.blur();
-            updateLastInput();
+            syncVisualAssistsUI();
         });
     }
 
     function drawWeightsChart() {
         if (!weightsChart) return;
-
         const chartContext = weightsChart.getContext('2d');
         const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
         const chartWidth = weightsChart.width;
@@ -454,14 +798,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         chartContext.clearRect(0, 0, chartWidth, chartHeight);
         chartContext.font = '600 10px -apple-system, sans-serif';
-        chartContext.textBaseline = 'alphabetic';
 
         if (totalWeight <= 0) {
             chartContext.fillStyle = '#30363d';
             chartContext.fillRect(chartLeft, chartTop, chartWidth - chartLeft * 2, chartAreaHeight);
-            chartContext.fillStyle = '#8b949e';
-            chartContext.textAlign = 'center';
-            chartContext.fillText('No weights', chartWidth / 2, chartHeight / 2);
             return;
         }
 
@@ -509,10 +849,7 @@ document.addEventListener('DOMContentLoaded', () => {
             input.min = '0';
             input.max = '100';
             input.value = weights[index];
-            input.onchange = (e) => {
-                updateWeight(index, parseInt(e.target.value, 10));
-                updateLastInput();
-            };
+            input.onchange = (e) => updateWeight(index, parseInt(e.target.value, 10));
 
             const btnPlus = document.createElement('button');
             btnPlus.className = 'step-btn';
@@ -521,8 +858,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const pct = document.createElement('span');
             pct.className = 'percentage-display';
-            const percentage = totalWeight > 0 ? ((weights[index] / totalWeight) * 100).toFixed(1) : 0;
-            pct.textContent = `${percentage}%`;
+            pct.textContent = `${totalWeight > 0 ? ((weights[index] / totalWeight) * 100).toFixed(1) : 0}%`;
 
             row.append(label, btnMinus, input, btnPlus, pct);
             weightsContainer.appendChild(row);
@@ -533,68 +869,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateWeight(index, value) {
         weights[index] = Math.max(0, isNaN(value) ? 0 : value);
+        saveWeights();
         renderProbabilityControls();
     }
 
     if (resetWeightsButton) {
         resetWeightsButton.addEventListener('click', () => {
             weights = [...DEFAULT_WEIGHTS];
+            saveWeights();
             renderProbabilityControls();
-            resetWeightsButton.blur();
-            updateLastInput();
-        });
-    }
-
-    if (autoPlayBtn) {
-        autoPlayBtn.addEventListener('click', () => {
-            autoPlay = !autoPlay;
-            autoPlayBtn.classList.toggle('active', autoPlay);
-            autoPlayBtn.textContent = autoPlay ? 'Auto-Play ON' : 'Auto-Play OFF';
-            if (autoPlayStatus) autoPlayStatus.textContent = autoPlay ? 'ON' : 'OFF';
-            updateLastInput();
         });
     }
 
     function setDropSpeed(newSpeed) {
         dropIntervalMs = Math.min(1000, Math.max(100, newSpeed));
         if (speedDisplay) speedDisplay.textContent = `${dropIntervalMs} ms`;
+        updateDOMHud();
     }
 
-    if (speedDownBtn) {
-        speedDownBtn.addEventListener('click', () => {
-            setDropSpeed(dropIntervalMs + 50);
-            speedDownBtn.blur();
-            updateLastInput();
-        });
-    }
-
-    if (speedUpBtn) {
-        speedUpBtn.addEventListener('click', () => {
-            setDropSpeed(dropIntervalMs - 50);
-            speedUpBtn.blur();
-            updateLastInput();
-        });
-    }
+    if (speedDownBtn) speedDownBtn.addEventListener('click', () => setDropSpeed(dropIntervalMs + 50));
+    if (speedUpBtn) speedUpBtn.addEventListener('click', () => setDropSpeed(dropIntervalMs - 50));
 
     function togglePause() {
         if (isGameOver) return;
         isPaused = !isPaused;
         if (pauseButton) pauseButton.textContent = isPaused ? 'Resume (P)' : 'Pause (P)';
-        if (pauseButton) pauseButton.blur();
     }
 
-    function triggerGameOver() {
+    function triggerGameOver(customText = 'GAME OVER') {
         isGameOver = true;
+        gameResultText = customText;
         checkAndUpdateHighScore();
         playSound('gameOver');
         shakeDurationRemaining = 0;
+        updateDOMHud();
     }
 
-    function resetGame() {
+    function resetGame(startAutoPlay = true) {
         board = Array.from({ length: boardHeight }, () => Array(boardWidth).fill(0));
         score = 0;
+        totalLinesCleared = 0;
+        lastMultiplier = 1;
         isPaused = false;
         isGameOver = false;
+        gameResultText = 'GAME OVER';
         heldShapeIndex = -1;
         hasSwapped = false;
         shakeDurationRemaining = 0;
@@ -602,6 +920,10 @@ document.addEventListener('DOMContentLoaded', () => {
         clearingLines = [];
         clearAnimationTimer = 0;
         dropAccumulator = 0;
+        modeStartTime = performance.now();
+        modeElapsedTime = 0;
+
+        setAutoPlay(startAutoPlay);
 
         nextShapesQueue = [];
         fillQueue();
@@ -609,7 +931,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateDimensionUI();
         updateQueueUI();
+        syncVisualAssistsUI();
+        updateDOMHud();
     }
+
+    function setGameMode(newMode) {
+        gameMode = newMode;
+        [modeMarathon, modeSprint, modeUltra].forEach(btn => btn.classList.remove('active'));
+        if (newMode === 'marathon') modeMarathon.classList.add('active');
+        else if (newMode === 'sprint') modeSprint.classList.add('active');
+        else if (newMode === 'ultra') modeUltra.classList.add('active');
+        resetGame(true);
+    }
+
+    if (modeMarathon) modeMarathon.addEventListener('click', () => setGameMode('marathon'));
+    if (modeSprint) modeSprint.addEventListener('click', () => setGameMode('sprint'));
+    if (modeUltra) modeUltra.addEventListener('click', () => setGameMode('ultra'));
 
     function rotateMatrix(matrix) {
         if (!matrix || matrix.length === 0) return matrix;
@@ -618,120 +955,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function checkCollision(shape, targetX, targetY) {
         if (!shape) return false;
-
         for (let y = 0; y < shape.length; y++) {
             for (let x = 0; x < shape[y].length; x++) {
                 if (shape[y][x] !== 0) {
                     const newX = targetX + x;
                     const newY = targetY + y;
-
-                    // Lateral boundaries
                     if (newX < 0 || newX >= boardWidth) return true;
-                    // Floor boundary
                     if (newY >= boardHeight) return true;
-                    // Placed piece collision
-                    if (newY >= 0 && board[newY] && board[newY][newX] !== 0) {
-                        return true;
-                    }
+                    if (newY >= 0 && board[newY] && board[newY][newX] !== 0) return true;
                 }
             }
         }
         return false;
     }
 
-    function computeBestPlacement(baseShape) {
-        if (!baseShape || isGameOver) return null;
-
-        let bestScore = -Infinity;
-        let bestTarget = null;
-
-        const rotations = [];
-        let curr = baseShape;
-        for (let r = 0; r < 4; r++) {
-            rotations.push({ shape: curr, rot: r });
-            curr = rotateMatrix(curr);
-        }
-
-        for (const { shape, rot } of rotations) {
-            const shapeW = shape[0].length;
-            for (let x = 0; x <= boardWidth - shapeW; x++) {
-                if (checkCollision(shape, x, 0)) continue;
-
-                let y = 0;
-                while (!checkCollision(shape, x, y + 1)) y++;
-
-                const simBoard = board.map(row => [...row]);
-                let placementValid = true;
-
-                for (let sy = 0; sy < shape.length; sy++) {
-                    for (let sx = 0; sx < shape[sy].length; sx++) {
-                        if (shape[sy][sx] !== 0) {
-                            const by = y + sy;
-                            const bx = x + sx;
-                            if (by >= 0 && by < boardHeight && bx >= 0 && bx < boardWidth) {
-                                simBoard[by][bx] = 1;
-                            } else {
-                                placementValid = false;
-                            }
-                        }
-                    }
-                }
-
-                if (!placementValid) continue;
-
-                let linesCleared = 0;
-                for (let r = 0; r < boardHeight; r++) {
-                    if (!simBoard[r].includes(0)) linesCleared++;
-                }
-
-                let holes = 0;
-                const colHeights = new Array(boardWidth).fill(0);
-                for (let c = 0; c < boardWidth; c++) {
-                    let blockSeen = false;
-                    for (let r = 0; r < boardHeight; r++) {
-                        if (simBoard[r][c] !== 0) {
-                            if (!blockSeen) {
-                                colHeights[c] = boardHeight - r;
-                                blockSeen = true;
-                            }
-                        } else if (blockSeen) {
-                            holes++;
-                        }
-                    }
-                }
-
-                let roughness = 0;
-                for (let c = 0; c < boardWidth - 1; c++) {
-                    roughness += Math.abs(colHeights[c] - colHeights[c + 1]);
-                }
-
-                const aggregateHeight = colHeights.reduce((acc, h) => acc + h, 0);
-                const scoreEvaluation = (linesCleared * 40.0) - (aggregateHeight * 0.5) - (holes * 9.0) - (roughness * 1.5) + (y * 1.2);
-
-                if (scoreEvaluation > bestScore) {
-                    bestScore = scoreEvaluation;
-                    bestTarget = { x, y, rotation: rot, shape };
-                }
-            }
-        }
-
-        return bestTarget;
-    }
-
     function spawnShape() {
         fillQueue();
-        if (nextShapesQueue.length === 0) {
-            nextShapesQueue.push(getRandomShapeIndex());
-        }
+        if (nextShapesQueue.length === 0) nextShapesQueue.push(getRandomShapeIndex());
         currentShapeIndex = nextShapesQueue.shift();
         fillQueue();
 
-        if (currentShapeIndex === undefined || currentShapeIndex >= SHAPES.length) {
-            currentShapeIndex = 0;
-        }
-
+        if (currentShapeIndex === undefined || currentShapeIndex >= SHAPES.length) currentShapeIndex = 0;
         currentShape = SHAPES[currentShapeIndex];
-        
+
         if (!currentShape || !currentShape[0]) {
             triggerGameOver();
             return;
@@ -745,11 +991,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        try {
-            bestProposal = computeBestPlacement(currentShape);
-        } catch (e) {
-            bestProposal = null;
-        }
+        triggerBestPlacementCalculation(currentShape);
+        updateDOMHud();
     }
 
     function getShadowY() {
@@ -776,13 +1019,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         currentShape = null;
-
-        // Detect full lines for flash and destruction animation
         clearingLines = [];
         for (let y = 0; y < boardHeight; y++) {
-            if (!board[y].includes(0)) {
-                clearingLines.push(y);
-            }
+            if (!board[y].includes(0)) clearingLines.push(y);
         }
 
         if (clearingLines.length > 0) {
@@ -791,7 +1030,6 @@ document.addEventListener('DOMContentLoaded', () => {
             shakeDurationRemaining = SHAKE_TOTAL_DURATION;
             flashDurationRemaining = FLASH_DURATION;
 
-            // Emit particles immediately from clearing lines
             clearingLines.forEach(lineY => {
                 for (let x = 0; x < boardWidth; x++) {
                     const color = COLORS[board[lineY][x]] || '#ffffff';
@@ -813,17 +1051,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const points = [100, 300, 500, 800];
-        const scoreGain = points[Math.min(count, 4) - 1] || 800;
-        score += scoreGain;
-        checkAndUpdateHighScore();
-
+        score += points[Math.min(count, 4) - 1] || 800;
         totalLinesCleared += count;
         gameLevel = Math.floor(totalLinesCleared / 10) + 1;
         dropIntervalMs = Math.max(100, 500 - (gameLevel - 1) * 50);
         lastMultiplier = count > 1 ? count : 1;
 
         clearingLines = [];
+
+        if (gameMode === 'sprint' && totalLinesCleared >= SPRINT_TARGET_LINES) {
+            triggerGameOver('SPRINT CLEAR!');
+            return;
+        }
+
         spawnShape();
+        updateDOMHud();
     }
 
     function dropShape() {
@@ -838,12 +1080,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function applyBestMatch() {
         if (!currentShape || isPaused || isGameOver || !bestProposal || clearingLines.length > 0) return;
-
         if (checkCollision(bestProposal.shape, bestProposal.x, bestProposal.y)) {
             dropShape();
             return;
         }
-
         currentShape = bestProposal.shape;
         currentX = bestProposal.x;
         currentY = bestProposal.y;
@@ -854,7 +1094,6 @@ document.addEventListener('DOMContentLoaded', () => {
         lastLockTime = 0;
     }
 
-    // Standard Super Rotation System (SRS) Wall Kicks
     const KICKS_NORMAL = {
         '0->1': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
         '1->0': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
@@ -881,7 +1120,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function rotateShape() {
         if (!currentShape || isPaused || isGameOver || clearingLines.length > 0) return;
-        if (currentShapeIndex === 1) return; // O-piece does not rotate
+        if (currentShapeIndex === 1) return;
 
         const rotated = rotateMatrix(currentShape);
         const nextRotationState = (currentRotationState + 1) % 4;
@@ -895,7 +1134,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentY -= offsetY;
                 currentShape = rotated;
                 currentRotationState = nextRotationState;
-                bestProposal = computeBestPlacement(currentShape);
+                triggerBestPlacementCalculation(currentShape);
                 playSound('rotate');
                 hasSwapped = false;
                 isLocked = false;
@@ -905,16 +1144,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function holdPiece() {
+        if (hasSwapped || !currentShape || isPaused || isGameOver) return;
+        playSound('rotate');
+        if (heldShapeIndex === -1) {
+            heldShapeIndex = currentShapeIndex;
+            spawnShape();
+        } else {
+            const temp = currentShapeIndex;
+            currentShapeIndex = heldShapeIndex;
+            heldShapeIndex = temp;
+            currentShape = SHAPES[currentShapeIndex];
+            currentX = Math.floor(boardWidth / 2) - Math.floor(currentShape[0].length / 2);
+            currentY = 0;
+            triggerBestPlacementCalculation(currentShape);
+        }
+        hasSwapped = true;
+        updateDOMHud();
+    }
+
     function drawBlock(x, y, color, alpha = 1.0) {
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.fillStyle = color;
         ctx.fillRect(x + 1, y + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
-
         ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
         ctx.fillRect(x + 1, y + 1, BLOCK_SIZE - 2, 2);
         ctx.fillRect(x + 1, y + 1, 2, BLOCK_SIZE - 2);
-
         ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
         ctx.fillRect(x + 1, y + BLOCK_SIZE - 3, BLOCK_SIZE - 2, 2);
         ctx.fillRect(x + BLOCK_SIZE - 3, y + 1, 2, BLOCK_SIZE - 2);
@@ -924,25 +1180,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateLogic(deltaMs) {
         if (isPaused || isGameOver) return;
 
-        const currentTime = Date.now();
-
-        // Line clear completion check
-        if (clearingLines.length > 0) {
-            clearAnimationTimer -= deltaMs;
-            if (clearAnimationTimer <= 0) {
-                finalizeLineClears();
-            }
+        modeElapsedTime += deltaMs;
+        if (gameMode === 'ultra' && modeElapsedTime >= ULTRA_DURATION_MS) {
+            triggerGameOver('TIME UP!');
             return;
         }
 
-        // Idle Auto-Play Check (30 seconds)
-        if (!autoPlay && (currentTime - lastInputTime > 30000)) {
-            autoPlay = true;
-            if (autoPlayBtn) {
-                autoPlayBtn.classList.add('active');
-                autoPlayBtn.textContent = 'Auto-Play ON';
-                if (autoPlayStatus) autoPlayStatus.textContent = 'ON';
-            }
+        if (clearingLines.length > 0) {
+            clearAnimationTimer -= deltaMs;
+            if (clearAnimationTimer <= 0) finalizeLineClears();
+            return;
         }
 
         dropAccumulator += deltaMs;
@@ -950,11 +1197,8 @@ document.addEventListener('DOMContentLoaded', () => {
             dropAccumulator %= dropIntervalMs;
 
             if (autoPlay) {
-                if (bestProposal) {
-                    applyBestMatch();
-                } else {
-                    dropShape();
-                }
+                if (bestProposal) applyBestMatch();
+                else dropShape();
             } else if (currentShape) {
                 if (!checkCollision(currentShape, currentX, currentY + 1)) {
                     currentY++;
@@ -962,10 +1206,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     isLocked = false;
                     lastLockTime = 0;
                 } else {
+                    const now = Date.now();
                     if (!isLocked) {
                         isLocked = true;
-                        lastLockTime = currentTime;
-                    } else if (currentTime - lastLockTime >= lockDelayMs) {
+                        lastLockTime = now;
+                    } else if (now - lastLockTime >= lockDelayMs) {
                         mergeShape();
                         isLocked = false;
                     }
@@ -976,10 +1221,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function draw(deltaMs) {
         particleSystem.update();
-
         ctx.save();
 
-        // Screen Shake calculation
         if (shakeDurationRemaining > 0) {
             const shakeFactor = shakeDurationRemaining / SHAKE_TOTAL_DURATION;
             const offsetX = (Math.random() - 0.5) * SHAKE_INTENSITY * shakeFactor * 2;
@@ -989,33 +1232,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const playfieldPixelWidth = boardWidth * BLOCK_SIZE;
 
-        // 1. Grid
         ctx.strokeStyle = '#161c24';
         ctx.lineWidth = 1;
-        for (let x = 0; x <= playfieldPixelWidth; x += BLOCK_SIZE) {
+        for (let x = 0; x <= canvas.width; x += BLOCK_SIZE) {
             ctx.beginPath();
             ctx.moveTo(x, 0);
-            ctx.lineTo(x, boardHeight * BLOCK_SIZE);
+            ctx.lineTo(x, canvas.height);
             ctx.stroke();
         }
-        for (let y = 0; y <= boardHeight * BLOCK_SIZE; y += BLOCK_SIZE) {
+        for (let y = 0; y <= canvas.height; y += BLOCK_SIZE) {
             ctx.beginPath();
             ctx.moveTo(0, y);
-            ctx.lineTo(playfieldPixelWidth, y);
+            ctx.lineTo(canvas.width, y);
             ctx.stroke();
         }
 
-        // Title Watermark
-        ctx.save();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-        ctx.font = '700 28px ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('HX.MX.TETRIX', playfieldPixelWidth / 2, 40);
-        ctx.restore();
-
-        // 2. Placed Blocks & Clearing Flash Highlights
         for (let y = 0; y < boardHeight; y++) {
             const isClearing = clearingLines.includes(y);
             for (let x = 0; x < boardWidth; x++) {
@@ -1030,14 +1262,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 3. Best Match Outline
         if (showBestMatch && bestProposal && bestProposal.shape && !isGameOver && clearingLines.length === 0) {
             ctx.save();
             ctx.strokeStyle = '#58a6ff';
             ctx.fillStyle = 'rgba(88, 166, 255, 0.08)';
             ctx.lineWidth = 1.5;
             ctx.setLineDash([4, 4]);
-
             for (let y = 0; y < bestProposal.shape.length; y++) {
                 for (let x = 0; x < bestProposal.shape[y].length; x++) {
                     if (bestProposal.shape[y][x] !== 0) {
@@ -1051,7 +1281,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.restore();
         }
 
-        // 4. Ghost Shadow & Active Shape
         if (currentShape && !isGameOver && clearingLines.length === 0) {
             if (showShadow) {
                 const shadowY = getShadowY();
@@ -1073,242 +1302,54 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 5. Sidebar Background
-        ctx.fillStyle = '#11161d';
-        ctx.fillRect(playfieldPixelWidth, 0, SIDEBAR_WIDTH * BLOCK_SIZE, boardHeight * BLOCK_SIZE);
-
-        ctx.strokeStyle = '#21262d';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(playfieldPixelWidth, 0);
-        ctx.lineTo(playfieldPixelWidth, boardHeight * BLOCK_SIZE);
-        ctx.stroke();
-
-        const hudX = playfieldPixelWidth + 16;
-        let hudY = 16;
-
-        // Current Shape Card
-        ctx.fillStyle = '#8b949e';
-        ctx.font = '600 11px -apple-system, sans-serif';
-        ctx.fillText('CURRENT', hudX, hudY);
-
-        hudY += 6;
-        const currentBoxHeight = 40;
-        ctx.fillStyle = '#161b22';
-        ctx.fillRect(hudX, hudY, 148, currentBoxHeight);
-        ctx.strokeStyle = '#30363d';
-        ctx.strokeRect(hudX, hudY, 148, currentBoxHeight);
-
-        if (currentShape && !isGameOver) {
-            const curBlockSize = 12;
-            const curColor = COLORS[currentShapeIndex + 1];
-            const cOffX = hudX + (148 - currentShape[0].length * curBlockSize) / 2;
-            const cOffY = hudY + (currentBoxHeight - currentShape.length * curBlockSize) / 2;
-
-            for (let sy = 0; sy < currentShape.length; sy++) {
-                for (let sx = 0; sx < currentShape[sy].length; sx++) {
-                    if (currentShape[sy][sx] !== 0) {
-                        ctx.fillStyle = curColor;
-                        ctx.fillRect(cOffX + sx * curBlockSize + 1, cOffY + sy * curBlockSize + 1, curBlockSize - 2, curBlockSize - 2);
-                    }
-                }
-            }
-        }
-
-        hudY += currentBoxHeight + 16;
-
-        // HOLD BLOCK
-        ctx.fillStyle = '#8b949e';
-        ctx.font = '600 11px -apple-system, sans-serif';
-        ctx.fillText('HOLD', hudX, hudY);
-
-        hudY += 6;
-        const holdBoxHeight = 40;
-        ctx.fillStyle = '#161b22';
-        ctx.fillRect(hudX, hudY, 148, holdBoxHeight);
-        ctx.strokeStyle = '#30363d';
-        ctx.strokeRect(hudX, hudY, 148, holdBoxHeight);
-
-        if (heldShapeIndex !== -1 && !isGameOver) {
-            const holdPiece = SHAPES[heldShapeIndex];
-            const holdColor = COLORS[heldShapeIndex + 1];
-            const hBlockSize = 12;
-            const hOffX = hudX + (148 - holdPiece[0].length * hBlockSize) / 2;
-            const hOffY = hudY + (holdBoxHeight - holdPiece.length * hBlockSize) / 2;
-
-            for (let sy = 0; sy < holdPiece.length; sy++) {
-                for (let sx = 0; sx < holdPiece[sy].length; sx++) {
-                    if (holdPiece[sy][sx] !== 0) {
-                        ctx.fillStyle = holdColor;
-                        ctx.fillRect(hOffX + sx * hBlockSize + 1, hOffY + sy * hBlockSize + 1, hBlockSize - 2, hBlockSize - 2);
-                    }
-                }
-            }
-        }
-
-        hudY += holdBoxHeight + 16;
-
-        // Lookahead Queue
-        ctx.fillStyle = '#8b949e';
-        ctx.font = '600 11px -apple-system, sans-serif';
-        ctx.fillText(`NEXT (${previewCount})`, hudX, hudY);
-
-        hudY += 6;
-
-        let nextItemHeight, nextBlockSize, boxGap;
-        if (previewCount <= 2) {
-            nextItemHeight = 36;
-            nextBlockSize = 11;
-            boxGap = 8;
-        } else if (previewCount <= 4) {
-            nextItemHeight = 28;
-            nextBlockSize = 9;
-            boxGap = 6;
-        } else {
-            nextItemHeight = 22;
-            nextBlockSize = 7;
-            boxGap = 4;
-        }
-
-        for (let i = 0; i < previewCount; i++) {
-            const nextIdx = nextShapesQueue[i];
-            const nextPiece = SHAPES[nextIdx];
-            const nextPieceColor = COLORS[nextIdx + 1];
-
-            ctx.fillStyle = '#161b22';
-            ctx.fillRect(hudX, hudY, 148, nextItemHeight);
-            ctx.strokeStyle = '#21262d';
-            ctx.strokeRect(hudX, hudY, 148, nextItemHeight);
-
-            const pOffX = hudX + (148 - nextPiece[0].length * nextBlockSize) / 2;
-            const pOffY = hudY + (nextItemHeight - nextPiece.length * nextBlockSize) / 2;
-
-            for (let sy = 0; sy < nextPiece.length; sy++) {
-                for (let sx = 0; sx < nextPiece[sy].length; sx++) {
-                    if (nextPiece[sy][sx] !== 0) {
-                        ctx.fillStyle = nextPieceColor;
-                        ctx.fillRect(pOffX + sx * nextBlockSize + 1, pOffY + sy * nextBlockSize + 1, nextBlockSize - 2, nextBlockSize - 2);
-                    }
-                }
-            }
-            hudY += nextItemHeight + boxGap;
-        }
-
-        // Keys Card
-        const statsBottom = boardHeight * BLOCK_SIZE - 18;
-        const keysY = statsBottom - 220;
-        ctx.fillStyle = '#161b22';
-        ctx.fillRect(hudX - 6, keysY - 14, 160, 78);
-        ctx.strokeStyle = '#30363d';
-        ctx.strokeRect(hudX - 6, keysY - 14, 160, 78);
-
-        ctx.fillStyle = '#8b949e';
-        ctx.font = '600 12px -apple-system, sans-serif';
-        ctx.fillText('KEYS', hudX, keysY);
-
-        ctx.fillStyle = '#c9d1d9';
-        ctx.font = '600 11px ui-monospace, monospace';
-        ctx.fillText('← → MOVE ↑ ROTATE', hudX, keysY + 15);
-        ctx.fillText('↓ SOFT DROP SPACE DROP', hudX, keysY + 30);
-        ctx.fillText('C HOLD P PAUSE', hudX, keysY + 45);
-        ctx.fillText('ENTER BEST MATCH', hudX, keysY + 56);
-
-        ctx.strokeStyle = '#30363d';
-        ctx.beginPath();
-        ctx.moveTo(hudX, statsBottom - 148);
-        ctx.lineTo(hudX + 148, statsBottom - 148);
-        ctx.stroke();
-
-        // Metrics
-        hudY = statsBottom - 132;
-        ctx.fillStyle = '#8b949e';
-        ctx.font = '600 11px -apple-system, sans-serif';
-        ctx.fillText('SCORE', hudX, hudY);
-
-        hudY += 16;
-        ctx.fillStyle = '#f0f6fc';
-        ctx.font = '600 14px ui-monospace, monospace';
-        ctx.fillText(String(score).padStart(6, '0'), hudX, hudY);
-        
-        ctx.fillStyle = '#f85149';
-        ctx.font = '600 11px ui-monospace, monospace';
-        ctx.fillText(`x${lastMultiplier}`, hudX + 90, hudY);
-
-        hudY = statsBottom - 84;
-        ctx.fillStyle = '#8b949e';
-        ctx.font = '600 11px -apple-system, sans-serif';
-        ctx.fillText('★ BEST', hudX, hudY);
-
-        hudY = statsBottom - 66;
-        ctx.fillStyle = '#f0f6fc';
-        ctx.font = '600 14px ui-monospace, monospace';
-        ctx.fillText(String(highScore).padStart(6, '0'), hudX, hudY);
-
-        hudY = statsBottom - 30;
-        ctx.fillStyle = '#8b949e';
-        ctx.font = '600 11px -apple-system, sans-serif';
-        ctx.fillText('SPEED', hudX, hudY);
-
-        hudY = statsBottom;
-        ctx.fillStyle = '#f0f6fc';
-        ctx.font = '600 14px ui-monospace, monospace';
-        ctx.fillText(`${String(dropIntervalMs).padStart(4, '0')} ms`, hudX, hudY);
-
-        // Game Over & Paused Overlays
         if (isGameOver) {
             ctx.fillStyle = 'rgba(9, 13, 18, 0.85)';
-            ctx.fillRect(0, 0, playfieldPixelWidth, boardHeight * BLOCK_SIZE);
-
-            const cardW = Math.min(230, playfieldPixelWidth - 20);
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const cardW = Math.min(230, canvas.width - 20);
             const cardH = 145;
-            const cardX = (playfieldPixelWidth - cardW) / 2;
-            const cardY = (boardHeight * BLOCK_SIZE - cardH) / 2;
+            const cardX = (canvas.width - cardW) / 2;
+            const cardY = (canvas.height - cardH) / 2;
 
             ctx.fillStyle = '#161b22';
-            ctx.strokeStyle = '#f85149';
+            ctx.strokeStyle = gameResultText.includes('CLEAR') ? '#3fb950' : '#f85149';
             ctx.lineWidth = 1.5;
             ctx.fillRect(cardX, cardY, cardW, cardH);
             ctx.strokeRect(cardX, cardY, cardW, cardH);
 
             ctx.textAlign = 'center';
-            ctx.fillStyle = '#f85149';
+            ctx.fillStyle = gameResultText.includes('CLEAR') ? '#3fb950' : '#f85149';
             ctx.font = '700 16px -apple-system, sans-serif';
-            ctx.fillText('GAME OVER', playfieldPixelWidth / 2, cardY + 28);
+            ctx.fillText(gameResultText, canvas.width / 2, cardY + 28);
 
             ctx.fillStyle = '#8b949e';
             ctx.font = '11px -apple-system, sans-serif';
-            ctx.fillText('FINAL SCORE', playfieldPixelWidth / 2, cardY + 50);
+            ctx.fillText(gameMode === 'sprint' ? 'TIME' : 'FINAL SCORE', canvas.width / 2, cardY + 50);
 
             ctx.fillStyle = '#f0f6fc';
             ctx.font = '700 18px ui-monospace, monospace';
-            ctx.fillText(String(score), playfieldPixelWidth / 2, cardY + 70);
-
-            ctx.fillStyle = '#e3b341';
-            ctx.font = '600 11px ui-monospace, monospace';
-            ctx.fillText(`BEST: ${String(highScore)}`, playfieldPixelWidth / 2, cardY + 92);
+            const displayVal = gameMode === 'sprint' ? `${(modeElapsedTime / 1000).toFixed(2)}s` : String(score);
+            ctx.fillText(displayVal, canvas.width / 2, cardY + 70);
 
             ctx.fillStyle = '#58a6ff';
             ctx.font = '11px -apple-system, sans-serif';
-            ctx.fillText('Click Restart to Play Again', playfieldPixelWidth / 2, cardY + 120);
+            ctx.fillText('Click Restart to Play Again', canvas.width / 2, cardY + 115);
             ctx.textAlign = 'left';
 
         } else if (isPaused) {
             ctx.fillStyle = 'rgba(9, 13, 18, 0.75)';
-            ctx.fillRect(0, 0, playfieldPixelWidth, boardHeight * BLOCK_SIZE);
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#f0f6fc';
             ctx.font = '600 16px -apple-system, sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('PAUSED', playfieldPixelWidth / 2, (boardHeight * BLOCK_SIZE) / 2);
+            ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2);
             ctx.textAlign = 'left';
         }
 
-        // Toned-down, smoothly eased playfield-only flash
         if (flashDurationRemaining > 0) {
             const progress = flashDurationRemaining / FLASH_DURATION;
-            // Quadratic easing for a soft, natural fade
             const alpha = Math.pow(progress, 2) * FLASH_MAX_OPACITY;
             ctx.fillStyle = `rgba(224, 242, 254, ${alpha})`;
-            ctx.fillRect(0, 0, playfieldPixelWidth, boardHeight * BLOCK_SIZE);
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
             flashDurationRemaining = Math.max(0, flashDurationRemaining - deltaMs);
         }
 
@@ -1316,109 +1357,169 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.restore();
     }
 
-    // Continuous 60/120Hz Animation & Game Loop
     function mainGameLoop(timestamp) {
         const deltaMs = Math.min(timestamp - lastTimestamp, 50);
         lastTimestamp = timestamp;
 
         updateLogic(deltaMs);
         draw(deltaMs);
+        updateDOMHud();
 
         requestAnimationFrame(mainGameLoop);
     }
 
+    function matchesKeybind(eventKey, bindList) {
+        return Array.isArray(bindList) && bindList.includes(eventKey);
+    }
+
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'p' || e.key === 'P') {
+        if (matchesKeybind(e.key, keybinds.pause)) {
             togglePause();
             return;
         }
 
         if (isPaused || isGameOver || !currentShape || clearingLines.length > 0) return;
-        updateLastInput();
 
-        switch (e.key) {
-            case 'ArrowLeft':
-                if (!checkCollision(currentShape, currentX - 1, currentY)) {
-                    currentX--;
-                    playSound('move');
-                    hasSwapped = false;
-                    isLocked = false;
-                    lastLockTime = 0;
-                }
-                break;
-            case 'ArrowRight':
-                if (!checkCollision(currentShape, currentX + 1, currentY)) {
-                    currentX++;
-                    playSound('move');
-                    hasSwapped = false;
-                    isLocked = false;
-                    lastLockTime = 0;
-                }
-                break;
-            case 'ArrowDown':
-                if (!checkCollision(currentShape, currentX, currentY + 1)) {
-                    currentY++;
-                }
-                break;
-            case 'ArrowUp':
-                rotateShape();
-                break;
-            case ' ':
-                e.preventDefault();
-                dropShape();
-                break;
-            case 'Enter':
-                e.preventDefault();
-                applyBestMatch();
-                break;
-            case 'c':
-            case 'C':
-                if (!hasSwapped) {
-                    playSound('rotate');
-                    if (heldShapeIndex === -1) {
-                        heldShapeIndex = currentShapeIndex;
-                        spawnShape();
-                    } else {
-                        const temp = currentShapeIndex;
-                        currentShapeIndex = heldShapeIndex;
-                        heldShapeIndex = temp;
+        const isGameplayKey = Object.values(keybinds).some(list => list.includes(e.key));
+        if (isGameplayKey) onGameplayInput();
 
-                        currentShape = SHAPES[currentShapeIndex];
-                        currentX = Math.floor(boardWidth / 2) - Math.floor(currentShape[0].length / 2);
-                        currentY = 0;
-                        bestProposal = computeBestPlacement(currentShape);
-                    }
-                    hasSwapped = true;
-                }
-                break;
+        if (matchesKeybind(e.key, keybinds.moveLeft)) {
+            if (!checkCollision(currentShape, currentX - 1, currentY)) {
+                currentX--;
+                playSound('move');
+                hasSwapped = false;
+                isLocked = false;
+            }
+        } else if (matchesKeybind(e.key, keybinds.moveRight)) {
+            if (!checkCollision(currentShape, currentX + 1, currentY)) {
+                currentX++;
+                playSound('move');
+                hasSwapped = false;
+                isLocked = false;
+            }
+        } else if (matchesKeybind(e.key, keybinds.softDrop)) {
+            if (!checkCollision(currentShape, currentX, currentY + 1)) {
+                currentY++;
+            }
+        } else if (matchesKeybind(e.key, keybinds.rotate)) {
+            rotateShape();
+        } else if (matchesKeybind(e.key, keybinds.hardDrop)) {
+            e.preventDefault();
+            dropShape();
+        } else if (matchesKeybind(e.key, keybinds.bestMatch)) {
+            e.preventDefault();
+            applyBestMatch();
+        } else if (matchesKeybind(e.key, keybinds.hold)) {
+            holdPiece();
         }
     });
 
-    if (pauseButton) pauseButton.addEventListener('click', () => {
-        togglePause();
-        updateLastInput();
+    document.querySelectorAll('.touch-btn').forEach(btn => {
+        const action = btn.getAttribute('data-action');
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            onGameplayInput();
+            if (isPaused || isGameOver) return;
+
+            switch (action) {
+                case 'moveLeft':
+                    if (!checkCollision(currentShape, currentX - 1, currentY)) {
+                        currentX--;
+                        playSound('move');
+                        hasSwapped = false;
+                    }
+                    break;
+                case 'moveRight':
+                    if (!checkCollision(currentShape, currentX + 1, currentY)) {
+                        currentX++;
+                        playSound('move');
+                        hasSwapped = false;
+                    }
+                    break;
+                case 'softDrop':
+                    if (!checkCollision(currentShape, currentX, currentY + 1)) currentY++;
+                    break;
+                case 'rotate':
+                    rotateShape();
+                    break;
+                case 'hardDrop':
+                    dropShape();
+                    break;
+                case 'hold':
+                    holdPiece();
+                    break;
+                case 'bestMatch':
+                    applyBestMatch();
+                    break;
+            }
+        }, { passive: false });
     });
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+
+    canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            touchStartTime = performance.now();
+        }
+    }, { passive: true });
+
+    canvas.addEventListener('touchend', (e) => {
+        if (isPaused || isGameOver || !currentShape) return;
+        onGameplayInput();
+
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        const dx = touchEndX - touchStartX;
+        const dy = touchEndY - touchStartY;
+        const duration = performance.now() - touchStartTime;
+
+        if (Math.hypot(dx, dy) < 15 && duration < 250) {
+            rotateShape();
+            return;
+        }
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+            if (dx > 30 && !checkCollision(currentShape, currentX + 1, currentY)) {
+                currentX++;
+                playSound('move');
+            } else if (dx < -30 && !checkCollision(currentShape, currentX - 1, currentY)) {
+                currentX--;
+                playSound('move');
+            }
+        } else {
+            if (dy > 30) {
+                dropShape();
+            }
+        }
+    }, { passive: true });
+
+    if (pauseButton) {
+        pauseButton.addEventListener('click', () => {
+            initAudio();
+            togglePause();
+        });
+    }
 
     if (togglePanelButton && controlsPanel) {
         togglePanelButton.addEventListener('click', () => {
-            const panelVisible = !controlsPanel.hidden;
-            controlsPanel.hidden = panelVisible;
-            togglePanelButton.textContent = panelVisible ? 'Show Panel' : 'Hide Panel';
-            togglePanelButton.setAttribute('aria-expanded', String(!panelVisible));
-            togglePanelButton.blur();
-            updateLastInput();
+            const isHidden = !controlsPanel.hidden;
+            controlsPanel.hidden = isHidden;
+            togglePanelButton.textContent = isHidden ? 'Show Panel' : 'Hide Panel';
         });
     }
 
     if (restartButton) {
         restartButton.addEventListener('click', () => {
-            resetGame();
-            restartButton.blur();
-            updateLastInput();
+            initAudio();
+            resetGame(true);
         });
     }
 
     renderProbabilityControls();
-    resetGame();
+    resetGame(true);
     requestAnimationFrame(mainGameLoop);
 });
